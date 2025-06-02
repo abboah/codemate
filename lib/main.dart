@@ -1,3 +1,5 @@
+import 'package:codemate/auth/login_page.dart';
+import 'package:codemate/auth/signup_page.dart';
 import 'package:codemate/landing_page/landing_page.dart';
 import 'package:flutter/material.dart';
 
@@ -22,7 +24,7 @@ class MyApp extends StatelessWidget {
           secondary: const Color(0xFF202124),
         ),
       ),
-      home: const LandingPage(),
+      home: const SignUpPage(),
     );
   }
 }

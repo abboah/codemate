@@ -1,5 +1,37 @@
 import 'package:flutter/material.dart';
 
+class HoverPopWidget extends StatefulWidget {
+  final Widget child;
+  const HoverPopWidget({Key? key, required this.child}) : super(key: key);
+
+  @override
+  State<HoverPopWidget> createState() => _HoverPopWidgetState();
+}
+
+class _HoverPopWidgetState extends State<HoverPopWidget> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => _onHover(true),
+      onExit: (_) => _onHover(false),
+      child: AnimatedScale(
+        scale: _isHovered ? 1.08 : 1.0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+        child: widget.child,
+      ),
+    );
+  }
+
+  void _onHover(bool isHovered) {
+    setState(() {
+      _isHovered = isHovered;
+    });
+  }
+}
+
 class LandingPage extends StatelessWidget {
   const LandingPage({Key? key}) : super(key: key);
 
@@ -43,11 +75,11 @@ class NavBar extends StatelessWidget {
         children: [
           Row(
             children: [
-              Image.asset('images/projectx_logo.png', height: 24),
+              Image.asset('images/projectx_logo.png', height: 25),
               const SizedBox(width: 8),
               if (!isMobile)
                 const Text(
-                  'ProjectX Code Learning',
+                  'Robin',
                   style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -71,20 +103,22 @@ class NavBar extends StatelessWidget {
                 _navItem('Coding Assistant'),
                 _navItem('Dashboard'),
                 _navItem('Log In'),
-                ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                HoverPopWidget(
+                  child: ElevatedButton(
+                    onPressed: () {},
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
                     ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
+                    child: const Text('Download'),
                   ),
-                  child: const Text('Download'),
                 ),
               ],
             ),
@@ -96,7 +130,13 @@ class NavBar extends StatelessWidget {
   Widget _navItem(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Text(text, style: const TextStyle(color: Colors.white)),
+      child: HoverPopWidget(
+        child: TextButton(
+          onPressed: () => print("Clicked"),
+
+          child: Text(text, style: const TextStyle(color: Colors.white)),
+        ),
+      ),
     );
   }
 }
@@ -141,24 +181,29 @@ class HeroSection extends StatelessWidget {
           Container(
             constraints: BoxConstraints(maxWidth: isMobile ? 400 : 600),
             child: const Text(
-              'ProjectX enhances your coding experience with interactive tools that simplify learning and boost productivity for every developer.',
+              'Robin enhances your coding experience with interactive tools that simplify learning and boost productivity for every developer.',
               style: TextStyle(color: Colors.white, fontSize: 16.0),
               textAlign: TextAlign.center,
             ),
           ),
           const SizedBox(height: 32),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              textStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+          HoverPopWidget(
+            child: ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 16,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
+              child: const Text('Download Robin'),
             ),
-            child: const Text('Download ProjectX'),
           ),
           const SizedBox(height: 48),
           Container(
@@ -366,39 +411,41 @@ class _TestimonialsSectionState extends State<TestimonialsSection> {
   }
 
   Widget _testimonialItem(String name, String role) {
-    return Container(
-      width: 300,
-      margin: const EdgeInsets.symmetric(horizontal: 8.0),
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const CircleAvatar(
-            radius: 32,
-            backgroundImage: AssetImage('images/avatar.png'),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            '"ProjectX has revolutionized\nmy development workflow!"',
-            style: TextStyle(color: Colors.white, fontSize: 14.0),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            name,
-            style: TextStyle(
-              color: Color(0xFFBFB06C),
-              fontSize: 16.0,
-              fontWeight: FontWeight.bold,
+    return HoverPopWidget(
+      child: Container(
+        width: 300,
+        margin: const EdgeInsets.symmetric(horizontal: 8.0),
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFF2A2A2A),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircleAvatar(
+              radius: 32,
+              backgroundImage: AssetImage('images/avatar.png'),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(role, style: TextStyle(color: Colors.white70, fontSize: 12.0)),
-        ],
+            const SizedBox(height: 16),
+            const Text(
+              '"ProjectX has revolutionized\nmy development workflow!"',
+              style: TextStyle(color: Colors.white, fontSize: 14.0),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              name,
+              style: TextStyle(
+                color: Color(0xFFBFB06C),
+                fontSize: 16.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(role, style: TextStyle(color: Colors.white70, fontSize: 12.0)),
+          ],
+        ),
       ),
     );
   }
@@ -466,7 +513,7 @@ class Footer extends StatelessWidget {
             ),
           const SizedBox(height: 32),
           const Text(
-            '© 2023 ProjectX All rights reserved.',
+            '© 2025 Robin All rights reserved.',
             style: TextStyle(color: Colors.white54, fontSize: 12.0),
           ),
         ],
@@ -475,11 +522,13 @@ class Footer extends StatelessWidget {
   }
 
   Widget _footerLink(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8.0),
-      child: Text(
-        text,
-        style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+    return HoverPopWidget(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+        child: Text(
+          text,
+          style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+        ),
       ),
     );
   }
@@ -488,23 +537,29 @@ class Footer extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14.0,
-            fontWeight: FontWeight.bold,
+        HoverPopWidget(
+          child: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14.0,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          link1,
-          style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+        HoverPopWidget(
+          child: Text(
+            link1,
+            style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+          ),
         ),
         const SizedBox(height: 8),
-        Text(
-          link2,
-          style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+        HoverPopWidget(
+          child: Text(
+            link2,
+            style: const TextStyle(color: Colors.white70, fontSize: 14.0),
+          ),
         ),
       ],
     );
