@@ -1,52 +1,35 @@
 import 'package:flutter/material.dart';
 
-class HoverPopWidget extends StatefulWidget {
-  final Widget child;
-  const HoverPopWidget({Key? key, required this.child}) : super(key: key);
-
-  @override
-  State<HoverPopWidget> createState() => _HoverPopWidgetState();
-}
-
-class _HoverPopWidgetState extends State<HoverPopWidget> {
-  bool _isHovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => _onHover(true),
-      onExit: (_) => _onHover(false),
-      child: AnimatedScale(
-        scale: _isHovered ? 1.08 : 1.0,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        child: widget.child,
-      ),
-    );
-  }
-
-  void _onHover(bool isHovered) {
-    setState(() {
-      _isHovered = isHovered;
-    });
-  }
-}
-
 class LandingPage extends StatelessWidget {
-  const LandingPage({Key? key}) : super(key: key);
+  const LandingPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       body: SingleChildScrollView(
         child: Column(
           children: const [
             NavBar(),
             HeroSection(),
-            AICodeEditorSection(isReversed: false),
-            AICodeEditorSection(isReversed: true),
-            AICodeEditorSection(isReversed: false),
-            AICodeEditorSection(isReversed: true),
+            FeatureSection(
+              title: "AI-Powered Code Assistance",
+              description:
+                  "Get intelligent suggestions as you code, with context-aware completions that learn your style.",
+              isReversed: false,
+            ),
+            FeatureSection(
+              title: "Interactive Learning",
+              description:
+                  "Master new concepts through hands-on coding exercises with real-time feedback.",
+              isReversed: true,
+            ),
+            FeatureSection(
+              title: "Seamless Integration",
+              description:
+                  "Works with your existing workflow and favorite tools without disruption.",
+              isReversed: false,
+            ),
             TestimonialsSection(),
             Footer(),
           ],
@@ -57,162 +40,212 @@ class LandingPage extends StatelessWidget {
 }
 
 class NavBar extends StatelessWidget {
-  const NavBar({Key? key}) : super(key: key);
+  const NavBar({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
-
+    final isMobile = MediaQuery.of(context).size.width < 768;
+    final color = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFF202124),
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16.0 : 32.0,
-        vertical: 16.0,
+        horizontal: isMobile ? 16 : 32,
+        vertical: 16,
+      ),
+      decoration: BoxDecoration(
+        color: color.surface,
+        border: Border(
+          bottom: BorderSide(color: Colors.blueGrey.shade900, width: 1),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Image.asset('images/projectx_logo.png', height: 25),
-              const SizedBox(width: 8),
-              if (!isMobile)
-                const Text(
-                  'Robin',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-            ],
-          ),
-          if (isMobile)
-            IconButton(
-              icon: const Icon(Icons.menu, color: Colors.white),
-              onPressed: () {
-                // Show mobile menu
-              },
-            )
-          else
+          const Logo(),
+          if (!isMobile)
             Row(
               children: [
-                _navItem('My Projects'),
-                _navItem('Learn'),
-                _navItem('Courses'),
-                _navItem('Coding Assistant'),
-                _navItem('Dashboard'),
-                _navItem('Log In'),
-                HoverPopWidget(
-                  child: ElevatedButton(
-                    onPressed: () {},
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    child: const Text('Download'),
-                  ),
-                ),
+                _NavItem("Features"),
+                _NavItem("Pricing"),
+                _NavItem("Docs"),
+                _NavItem("Blog"),
+                const SizedBox(width: 16),
+                _OutlineButton("Sign In"),
+                const SizedBox(width: 12),
+                _FilledButton("Get Started"),
               ],
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.menu, color: Colors.white),
+              onPressed: () {},
             ),
         ],
       ),
     );
   }
+}
 
-  Widget _navItem(String text) {
+class _NavItem extends StatelessWidget {
+  final String text;
+
+  const _NavItem(this.text);
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: HoverPopWidget(
-        child: TextButton(
-          onPressed: () => print("Clicked"),
-
-          child: Text(text, style: const TextStyle(color: Colors.white)),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: TextButton(
+        onPressed: () {},
+        child: Text(
+          text,
+          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16),
         ),
       ),
     );
   }
 }
 
-class HeroSection extends StatelessWidget {
-  const HeroSection({Key? key}) : super(key: key);
+class _OutlineButton extends StatelessWidget {
+  final String text;
+
+  const _OutlineButton(this.text);
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
+    return OutlinedButton(
+      onPressed: () {},
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: Colors.blue.shade400, width: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+      ),
+    );
+  }
+}
 
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        image: DecorationImage(
-          image: const AssetImage('images/hero_bg.png'),
-          fit: BoxFit.cover,
-          colorFilter: ColorFilter.mode(
-            Colors.black.withOpacity(0.7),
-            BlendMode.darken,
+class _FilledButton extends StatelessWidget {
+  final String text;
+
+  const _FilledButton(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: () {},
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue.shade600,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white, fontSize: 16),
+      ),
+    );
+  }
+}
+
+class Logo extends StatelessWidget {
+  const Logo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade600,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(Icons.code, color: Colors.white, size: 24),
+        ),
+        const SizedBox(width: 12),
+        const Text(
+          'Robin',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
         ),
-      ),
+      ],
+    );
+  }
+}
+
+class HeroSection extends StatelessWidget {
+  const HeroSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
+    return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16.0 : 32.0,
-        vertical: isMobile ? 48.0 : 80.0,
+        horizontal: isMobile ? 16 : 64,
+        vertical: 80,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.blue.shade900.withOpacity(0.2), Colors.black],
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            'Empowering Developers Through Interactive Learning',
+            'Elevate Your Development Workflow',
             style: TextStyle(
               color: Colors.white,
-              fontSize: isMobile ? 28.0 : 36.0,
+              fontSize: isMobile ? 32 : 48,
               fontWeight: FontWeight.bold,
+              height: 1.2,
             ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
           Container(
             constraints: BoxConstraints(maxWidth: isMobile ? 400 : 600),
-            child: const Text(
-              'Robin enhances your coding experience with interactive tools that simplify learning and boost productivity for every developer.',
-              style: TextStyle(color: Colors.white, fontSize: 16.0),
+            child: Text(
+              'Robin combines intelligent code assistance with interactive learning to help you write better code faster.',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.8),
+                fontSize: isMobile ? 16 : 18,
+                height: 1.6,
+              ),
               textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 32),
-          HoverPopWidget(
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
-                ),
-                textStyle: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              child: const Text('Download Robin'),
-            ),
-          ),
-          const SizedBox(height: 48),
+          const SizedBox(height: 40),
+          _FilledButton("Start Coding for Free"),
+          const SizedBox(height: 60),
           Container(
             constraints: BoxConstraints(
-              maxWidth: isMobile ? screenWidth * 0.9 : screenWidth * 0.8,
+              maxWidth: isMobile ? double.infinity : 800,
             ),
-            child: Image.asset(
-              'images/code_editor_preview.png',
-              width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blueGrey.shade800, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.shade800.withOpacity(0.1),
+                  blurRadius: 20,
+                  spreadRadius: 5,
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/code_editor_demo.png', // Replace with your image
+                fit: BoxFit.cover,
+              ),
             ),
           ),
         ],
@@ -221,31 +254,35 @@ class HeroSection extends StatelessWidget {
   }
 }
 
-class AICodeEditorSection extends StatelessWidget {
+class FeatureSection extends StatelessWidget {
+  final String title;
+  final String description;
   final bool isReversed;
 
-  const AICodeEditorSection({Key? key, required this.isReversed})
-    : super(key: key);
+  const FeatureSection({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.isReversed,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Container(
-      color: const Color(0xFF1E1E1E),
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16.0 : 32.0,
-        vertical: 48.0,
+        horizontal: isMobile ? 16 : 64,
+        vertical: 80,
       ),
+      color: Colors.grey.shade900.withOpacity(0.5),
       child:
           isMobile
               ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildText(),
-                  const SizedBox(height: 24),
                   _buildImage(),
+                  const SizedBox(height: 40),
+                  _buildText(),
                 ],
               )
               : Row(
@@ -253,12 +290,12 @@ class AICodeEditorSection extends StatelessWidget {
                     isReversed
                         ? [
                           Expanded(child: _buildImage()),
-                          const SizedBox(width: 48),
+                          const SizedBox(width: 60),
                           Expanded(child: _buildText()),
                         ]
                         : [
                           Expanded(child: _buildText()),
-                          const SizedBox(width: 48),
+                          const SizedBox(width: 60),
                           Expanded(child: _buildImage()),
                         ],
               ),
@@ -269,296 +306,270 @@ class AICodeEditorSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Our AI-native code editor offers real-time suggestions.',
-          style: TextStyle(
+        Text(
+          title,
+          style: const TextStyle(
             color: Colors.white,
-            fontSize: 24.0,
+            fontSize: 28,
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 24),
-        const Text(
-          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
-          style: TextStyle(color: Colors.white70, fontSize: 16.0),
+        const SizedBox(height: 20),
+        Text(
+          description,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.7),
+            fontSize: 16,
+            height: 1.6,
+          ),
         ),
+        const SizedBox(height: 30),
+        _OutlineButton("Learn More"),
       ],
     );
   }
 
   Widget _buildImage() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.asset('images/code_editor.png', width: double.infinity),
+    return Container(
+      height: 300,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.blueGrey.shade900,
+        border: Border.all(color: Colors.blueGrey.shade800, width: 1),
+      ),
+      child: const Center(
+        child: Icon(Icons.terminal, color: Colors.blue, size: 80),
+      ),
     );
   }
 }
 
-class TestimonialsSection extends StatefulWidget {
-  const TestimonialsSection({Key? key}) : super(key: key);
-
-  @override
-  State<TestimonialsSection> createState() => _TestimonialsSectionState();
-}
-
-class _TestimonialsSectionState extends State<TestimonialsSection> {
-  final PageController _pageController = PageController(viewportFraction: 0.9);
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController.addListener(() {
-      int next = _pageController.page!.round();
-      if (_currentPage != next) {
-        setState(() {
-          _currentPage = next;
-        });
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+class TestimonialsSection extends StatelessWidget {
+  const TestimonialsSection({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
-    final testimonials = [
-      _testimonialItem('Rick Wright', 'Developer at Google'),
-      _testimonialItem('Rick Wright', 'Executive Developer'),
-      _testimonialItem('Rick Wright', 'Technical Architect'),
-    ];
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Container(
-      color: const Color(0xFF1E1E1E),
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16.0 : 32.0,
-        vertical: 48.0,
+        horizontal: isMobile ? 16 : 64,
+        vertical: 80,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.black, Colors.blue.shade900.withOpacity(0.2)],
+        ),
       ),
       child: Column(
         children: [
-          const Text(
-            'TESTIMONIALS',
+          Text(
+            'Trusted by Developers Worldwide',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 16.0,
-              letterSpacing: 1.5,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'What Our Users Say',
-            style: TextStyle(
-              color: Color(0xFFBFB06C),
-              fontSize: isMobile ? 28.0 : 36.0,
+              fontSize: isMobile ? 28 : 36,
               fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(height: 48),
-          SizedBox(
-            height: 220,
-            child:
-                isMobile
-                    ? PageView.builder(
-                      controller: _pageController,
-                      itemCount: testimonials.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: testimonials[index],
-                        );
-                      },
-                    )
-                    : Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: testimonials,
+          const SizedBox(height: 60),
+          isMobile
+              ? Column(
+                children: [
+                  _buildTestimonial(
+                    name: "Alex Johnson",
+                    role: "Senior Engineer at TechCorp",
+                    quote: "Robin has transformed how our team writes code.",
+                  ),
+                  const SizedBox(height: 40),
+                  _buildTestimonial(
+                    name: "Sarah Chen",
+                    role: "Flutter Developer",
+                    quote: "The AI suggestions save me hours every week.",
+                  ),
+                ],
+              )
+              : Row(
+                children: [
+                  Expanded(
+                    child: _buildTestimonial(
+                      name: "Alex Johnson",
+                      role: "Senior Engineer at TechCorp",
+                      quote: "Robin has transformed how our team writes code.",
                     ),
-          ),
-          if (isMobile) ...[
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: () {
-                    _pageController.previousPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward, color: Colors.white),
-                  onPressed: () {
-                    _pageController.nextPage(
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                ),
-              ],
-            ),
-          ],
+                  ),
+                  const SizedBox(width: 40),
+                  Expanded(
+                    child: _buildTestimonial(
+                      name: "Sarah Chen",
+                      role: "Flutter Developer",
+                      quote: "The AI suggestions save me hours every week.",
+                    ),
+                  ),
+                ],
+              ),
         ],
       ),
     );
   }
 
-  Widget _testimonialItem(String name, String role) {
-    return HoverPopWidget(
-      child: Container(
-        width: 300,
-        margin: const EdgeInsets.symmetric(horizontal: 8.0),
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          color: const Color(0xFF2A2A2A),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircleAvatar(
-              radius: 32,
-              backgroundImage: AssetImage('images/avatar.png'),
+  Widget _buildTestimonial({
+    required String name,
+    required String role,
+    required String quote,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(30),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade900.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.blueGrey.shade800, width: 1),
+      ),
+      child: Column(
+        children: [
+          Text(
+            '"$quote"',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.9),
+              fontSize: 16,
+              fontStyle: FontStyle.italic,
+              height: 1.6,
             ),
-            const SizedBox(height: 16),
-            const Text(
-              '"ProjectX has revolutionized\nmy development workflow!"',
-              style: TextStyle(color: Colors.white, fontSize: 14.0),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              name,
-              style: TextStyle(
-                color: Color(0xFFBFB06C),
-                fontSize: 16.0,
-                fontWeight: FontWeight.bold,
+          ),
+          const SizedBox(height: 30),
+          Row(
+            children: [
+              Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.blue.shade800,
+                ),
+                child: const Icon(Icons.person, color: Colors.white),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(role, style: TextStyle(color: Colors.white70, fontSize: 12.0)),
-          ],
-        ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    role,
+                    style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
 class Footer extends StatelessWidget {
-  const Footer({Key? key}) : super(key: key);
+  const Footer({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isMobile = screenWidth < 768;
+    final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Container(
-      color: const Color(0xFF202124),
       padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16.0 : 32.0,
-        vertical: 40.0,
+        horizontal: isMobile ? 16 : 64,
+        vertical: 60,
       ),
+      color: Colors.black,
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Image.asset('images/projectx_logo.png', height: 24),
-              Row(
+          isMobile
+              ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _footerLink('Terms'),
-                  _footerLink('Support'),
-                  _footerLink('Privacy'),
-                  _footerLink('English'),
+                  const Logo(),
+                  const SizedBox(height: 40),
+                  _FooterColumn(
+                    title: "Product",
+                    items: const ["Features", "Pricing", "Integrations"],
+                  ),
+                  const SizedBox(height: 30),
+                  _FooterColumn(
+                    title: "Resources",
+                    items: const ["Documentation", "Tutorials", "Blog"],
+                  ),
+                  const SizedBox(height: 30),
+                  _FooterColumn(
+                    title: "Company",
+                    items: const ["About", "Careers", "Contact"],
+                  ),
+                ],
+              )
+              : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(child: Logo()),
+                  _FooterColumn(
+                    title: "Product",
+                    items: const ["Features", "Pricing", "Integrations"],
+                  ),
+                  _FooterColumn(
+                    title: "Resources",
+                    items: const ["Documentation", "Tutorials", "Blog"],
+                  ),
+                  _FooterColumn(
+                    title: "Company",
+                    items: const ["About", "Careers", "Contact"],
+                  ),
                 ],
               ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          if (isMobile)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _footerLinkSection(
-                  'Terms of Service',
-                  'Privacy Policy',
-                  'Security',
-                ),
-                const SizedBox(height: 24),
-                _footerLinkSection('Feedback', 'Support', 'Status'),
-                const SizedBox(height: 24),
-                _footerLinkSection('Contact', 'Twitter', 'GitHub'),
-              ],
-            )
-          else
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _footerLinkSection(
-                  'Terms of Service',
-                  'Privacy Policy',
-                  'Security',
-                ),
-                _footerLinkSection('Feedback', 'Support', 'Status'),
-                _footerLinkSection('Contact', 'Twitter', 'GitHub'),
-              ],
-            ),
-          const SizedBox(height: 32),
-          const Text(
-            '© 2025 Robin All rights reserved.',
-            style: TextStyle(color: Colors.white54, fontSize: 12.0),
+          const SizedBox(height: 60),
+          Divider(color: Colors.blueGrey.shade800, thickness: 1),
+          const SizedBox(height: 30),
+          Text(
+            "© 2023 Robin. All rights reserved.",
+            style: TextStyle(color: Colors.white.withOpacity(0.6)),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _footerLink(String text) {
-    return HoverPopWidget(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0),
-        child: Text(
-          text,
-          style: const TextStyle(color: Colors.white70, fontSize: 14.0),
-        ),
-      ),
-    );
-  }
+class _FooterColumn extends StatelessWidget {
+  final String title;
+  final List<String> items;
 
-  Widget _footerLinkSection(String title, String link1, String link2) {
+  const _FooterColumn({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        HoverPopWidget(
-          child: Text(
-            title,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14.0,
-              fontWeight: FontWeight.bold,
+        Text(
+          title,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
+        const SizedBox(height: 20),
+        ...items.map(
+          (item) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              item,
+              style: TextStyle(color: Colors.white.withOpacity(0.6)),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        HoverPopWidget(
-          child: Text(
-            link1,
-            style: const TextStyle(color: Colors.white70, fontSize: 14.0),
-          ),
-        ),
-        const SizedBox(height: 8),
-        HoverPopWidget(
-          child: Text(
-            link2,
-            style: const TextStyle(color: Colors.white70, fontSize: 14.0),
           ),
         ),
       ],

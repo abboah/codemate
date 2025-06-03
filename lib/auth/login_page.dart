@@ -1,4 +1,8 @@
+import 'dart:developer';
+
+import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/auth/signup_page.dart';
+import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
@@ -12,6 +16,10 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
+  // Initialize Auth Service
+  final authService = AuthService();
+
+  // Initialize Controllers
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -165,6 +173,15 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     // Simulate login process
     await Future.delayed(const Duration(seconds: 2));
+    final email = _emailController.text;
+    final password = _passwordController.text;
+    try {
+      await authService.loginWithEmailAndPassword(email, password);
+      log("Login Successful: $email");
+    } catch (e) {
+      // Todo...implement snackbar error
+      log("Login Error: $e");
+    }
 
     setState(() {
       _isLoading = false;
@@ -178,6 +195,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final textTheme = Theme.of(context).textTheme;
+    final gradientColors = Theme.of(context).extension<DarkGradientColors>()!;
 
     return Scaffold(
       body: Stack(
@@ -191,20 +209,21 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
+
                     colors: [
                       Color.lerp(
-                        const Color(0xFF667eea),
-                        const Color(0xFF764ba2),
+                        gradientColors.black,
+                        gradientColors.dark1,
                         (math.sin(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        const Color(0xFF764ba2),
-                        const Color(0xFFf093fb),
+                        gradientColors.dark1,
+                        gradientColors.dark2,
                         (math.cos(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        const Color(0xFFf093fb),
-                        const Color(0xFF667eea),
+                        gradientColors.dark2,
+                        gradientColors.black,
                         (math.sin(_backgroundAnimation.value + math.pi) + 1) /
                             2,
                       )!,
@@ -599,6 +618,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildEmailField() {
+    final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -639,10 +659,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -671,6 +688,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildPasswordField() {
+    final color = Theme.of(context).colorScheme;
+
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -724,10 +743,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -747,6 +763,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildRememberForgotRow(TextTheme textTheme) {
+    final color = Theme.of(context).colorScheme;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -763,7 +780,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
                   HapticFeedback.selectionClick();
                 },
                 activeColor: Colors.white,
-                checkColor: const Color(0xFF667eea),
+                checkColor: color.surface,
                 side: BorderSide(color: Colors.white.withOpacity(0.8)),
               ),
             ),
@@ -792,6 +809,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   Widget _buildLoginButton(TextTheme textTheme) {
+    final gradientColors = Theme.of(context).extension<DarkGradientColors>()!;
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
@@ -801,12 +819,16 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
             height: 56,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+              gradient: LinearGradient(
+                colors: [
+                  gradientColors.black,
+                  gradientColors.dark1,
+                  gradientColors.dark2,
+                ],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF667eea).withOpacity(0.4),
+                  color: gradientColors.dark1,
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -870,6 +892,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(16),
           onTap: () {
             HapticFeedback.selectionClick();
+            authService.continueWithGoogle();
           },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

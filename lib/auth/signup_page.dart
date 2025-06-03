@@ -1,4 +1,8 @@
+import 'dart:developer';
+
 import 'package:codemate/auth/login_page.dart';
+import 'package:codemate/auth/services/auth_service.dart';
+import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
@@ -12,6 +16,9 @@ class SignUpPage extends StatefulWidget {
 }
 
 class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
+  // Initialize Auth Service
+  final authService = AuthService();
+
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -186,6 +193,15 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
 
     // Simulate sign up process
     await Future.delayed(const Duration(seconds: 2));
+    HapticFeedback.mediumImpact();
+    final email = _emailController.text;
+    final password = _confirmPasswordController.text;
+    try {
+      await authService.signUpWithEmailAndPassword(email, password);
+    } catch (e) {
+      // Todo...implement snackbar error
+      log("Login Error: $e");
+    }
 
     setState(() {
       _isLoading = false;
@@ -197,6 +213,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final gradientColors = Theme.of(context).extension<DarkGradientColors>()!;
     final size = MediaQuery.of(context).size;
     final textTheme = Theme.of(context).textTheme;
 
@@ -212,20 +229,21 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
+
                     colors: [
                       Color.lerp(
-                        const Color(0xFF667eea),
-                        const Color(0xFF764ba2),
+                        gradientColors.black,
+                        gradientColors.dark1,
                         (math.sin(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        const Color(0xFF764ba2),
-                        const Color(0xFFf093fb),
+                        gradientColors.dark1,
+                        gradientColors.dark2,
                         (math.cos(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        const Color(0xFFf093fb),
-                        const Color(0xFF667eea),
+                        gradientColors.dark2,
+                        gradientColors.black,
                         (math.sin(_backgroundAnimation.value + math.pi) + 1) /
                             2,
                       )!,
@@ -628,6 +646,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildNameField() {
+    final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -669,10 +688,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -699,6 +715,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildEmailField() {
+    final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -739,10 +756,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -771,6 +785,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildPasswordField() {
+    final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -824,10 +839,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -847,6 +859,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildConfirmPasswordField() {
+    final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 300),
       tween: Tween(begin: 0.0, end: 1.0),
@@ -900,10 +913,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                 ),
                 errorBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: Colors.redAccent,
-                    width: 2,
-                  ),
+                  borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
               validator: (value) {
@@ -923,6 +933,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildTermsCheckbox(TextTheme textTheme) {
+    final color = Theme.of(context).colorScheme;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisAlignment: MainAxisAlignment.center,
@@ -938,7 +949,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
               HapticFeedback.selectionClick();
             },
             activeColor: Colors.white,
-            checkColor: const Color(0xFF667eea),
+            checkColor: color.surface,
             side: BorderSide(color: Colors.white.withOpacity(0.8)),
           ),
         ),
@@ -980,6 +991,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   Widget _buildSignUpButton(TextTheme textTheme) {
+    final gradientColors = Theme.of(context).extension<DarkGradientColors>()!;
     return AnimatedBuilder(
       animation: _pulseController,
       builder: (context, child) {
@@ -989,8 +1001,12 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
             height: 56,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+              gradient: LinearGradient(
+                colors: [
+                  gradientColors.black,
+                  gradientColors.dark1,
+                  gradientColors.dark2,
+                ],
               ),
               boxShadow: [
                 BoxShadow(
@@ -1058,6 +1074,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
           borderRadius: BorderRadius.circular(16),
           onTap: () {
             HapticFeedback.selectionClick();
+            authService.continueWithGoogle();
           },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
