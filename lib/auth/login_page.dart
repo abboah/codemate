@@ -1,12 +1,17 @@
 import 'dart:developer';
 
+import 'package:codemate/auth/components/new_password.dart';
+import 'package:codemate/auth/components/reset_password.dart';
 import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/auth/signup_page.dart';
+import 'package:codemate/home/homepage.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:ui';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -39,7 +44,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   bool _rememberMe = false;
   bool _isLoading = false;
   bool _showEmailError = false;
-  bool _showPasswordError = false;
+  bool isForgotPasswordDialogVisible = false;
+  bool isNewPasswordDialogVisible = false;
 
   @override
   void initState() {
@@ -92,6 +98,9 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     Future.delayed(const Duration(milliseconds: 500), () {
       _cardController.forward();
     });
+
+    _setupAuthListener();
+    // _checkInitialState();
   }
 
   Widget _buildFeatureItem(
@@ -178,6 +187,14 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
     try {
       await authService.loginWithEmailAndPassword(email, password);
       log("Login Successful: $email");
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) {
+            return HomePage();
+          },
+        ),
+      );
     } catch (e) {
       // Todo...implement snackbar error
       log("Login Error: $e");
@@ -189,6 +206,40 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
 
     // Success haptic
     HapticFeedback.lightImpact();
+  }
+
+  void _setupAuthListener() {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.passwordRecovery &&
+          data.session != null) {
+        setState(() {
+          isForgotPasswordDialogVisible = false; // Hide forgot password dialog
+          isNewPasswordDialogVisible = true; // Show new password dialog
+        });
+      }
+    });
+  }
+
+  // Future<void> _checkInitialState() async {
+  //   // Check if user came from password reset link
+  //   final session = Supabase.instance.client.auth.currentSession;
+  //   if (session != null) {
+  //     // This might be a password recovery session
+  //     setState(() {
+  //       isNewPasswordDialogVisible = true;
+  //     });
+  //   }
+  // }
+
+  Widget blurBackground() {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+      child: Container(
+        color: Colors.black.withOpacity(0.3),
+        width: double.infinity,
+        height: double.infinity,
+      ),
+    );
   }
 
   @override
@@ -493,6 +544,36 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
               }
             },
           ),
+          if (isForgotPasswordDialogVisible) ...[
+            blurBackground(),
+            Center(
+              child: ForgotPasswordDialog(
+                onClose:
+                    () => setState(() => isForgotPasswordDialogVisible = false),
+              ),
+            ),
+          ],
+          // New password dialog
+          if (isNewPasswordDialogVisible) ...[
+            blurBackground(),
+            // Container(
+            //   color: Colors.black.withOpacity(0.5),
+            //   child: const SizedBox.expand(),
+            // ),
+            NewPasswordDialog(
+              onClose: () => setState(() => isNewPasswordDialogVisible = false),
+              onSuccess: () {
+                setState(() => isNewPasswordDialogVisible = false);
+                // Handle success - maybe show a success message or navigate
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Password updated successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -795,6 +876,7 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         TextButton(
           onPressed: () {
             HapticFeedback.selectionClick();
+            setState(() => isForgotPasswordDialogVisible = true);
           },
           child: Text(
             "Forgot Password?",

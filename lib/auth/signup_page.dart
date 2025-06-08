@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:codemate/auth/login_page.dart';
 import 'package:codemate/auth/services/auth_service.dart';
+import 'package:codemate/home/homepage.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -198,6 +199,15 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
     final password = _confirmPasswordController.text;
     try {
       await authService.signUpWithEmailAndPassword(email, password);
+      log("Sign Up Successful: $email");
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) {
+            return HomePage();
+          },
+        ),
+      );
     } catch (e) {
       // Todo...implement snackbar error
       log("Login Error: $e");
@@ -562,6 +572,9 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
 
             // Password field
             _buildPasswordField(),
+
+            const SizedBox(height: 8),
+            _buildPasswordStrengthIndicator(Theme.of(context).colorScheme),
             const SizedBox(height: 18),
 
             // Confirm Password field
@@ -784,6 +797,125 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
     );
   }
 
+  String _getErrorMessage(String error) {
+    if (error.contains('weak password')) {
+      return 'Password is too weak. Please choose a stronger password';
+    } else if (error.contains('same password')) {
+      return 'New password must be different from your current password';
+    }
+    return 'Failed to update password. Please try again';
+  }
+
+  String? _validatePassword(String? value) {
+    if (value?.isEmpty ?? true) {
+      return 'Please enter a password';
+    }
+    if (value!.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)').hasMatch(value)) {
+      return 'Password must contain uppercase, lowercase, and number';
+    }
+    return null;
+  }
+
+  String? _validateConfirmPassword(String? value) {
+    if (value?.isEmpty ?? true) {
+      return 'Please confirm your password';
+    }
+    if (value != _passwordController.text) {
+      return 'Passwords do not match';
+    }
+    return null;
+  }
+
+  int _getPasswordStrength(String password) {
+    int strength = 0;
+    if (password.length >= 8) strength++;
+    if (RegExp(r'[a-z]').hasMatch(password)) strength++;
+    if (RegExp(r'[A-Z]').hasMatch(password)) strength++;
+    if (RegExp(r'\d').hasMatch(password)) strength++;
+    if (RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password)) strength++;
+    return strength;
+  }
+
+  Color _getStrengthColor(int strength, ColorScheme colorScheme) {
+    switch (strength) {
+      case 0:
+      case 1:
+        return colorScheme.error;
+      case 2:
+        return Colors.orange;
+      case 3:
+        return Colors.amber;
+      case 4:
+      case 5:
+        return Colors.green;
+      default:
+        return colorScheme.outline;
+    }
+  }
+
+  String _getStrengthText(int strength) {
+    switch (strength) {
+      case 0:
+      case 1:
+        return 'Weak';
+      case 2:
+        return 'Fair';
+      case 3:
+        return 'Good';
+      case 4:
+      case 5:
+        return 'Strong';
+      default:
+        return '';
+    }
+  }
+
+  Widget _buildPasswordStrengthIndicator(ColorScheme colorScheme) {
+    final password = _passwordController.text;
+    final strength = _getPasswordStrength(password);
+    final strengthColor = _getStrengthColor(strength, colorScheme);
+    final strengthText = _getStrengthText(strength);
+
+    if (password.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: LinearProgressIndicator(
+                value: strength / 5,
+                backgroundColor: colorScheme.outline.withOpacity(0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(strengthColor),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              strengthText,
+              style: TextStyle(
+                color: strengthColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          "Password should contain uppercase, lowercase, numbers, and symbols",
+          style: TextStyle(
+            fontSize: 12,
+            color: colorScheme.onSurface.withOpacity(0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPasswordField() {
     final color = Theme.of(context).colorScheme;
     return TweenAnimationBuilder<double>(
@@ -804,6 +936,9 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
               ],
             ),
             child: TextFormField(
+              onChanged: (_) {
+                setState(() {}); // Rebuild for strength indicator
+              },
               controller: _passwordController,
               obscureText: _obscurePassword,
               style: const TextStyle(color: Colors.white),
@@ -842,15 +977,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                   borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
-              validator: (value) {
-                if (value?.isEmpty ?? true) {
-                  return 'Please enter your password';
-                }
-                if (value!.length < 6) {
-                  return 'Password must be at least 6 characters';
-                }
-                return null;
-              },
+              validator: _validatePassword,
             ),
           ),
         );
@@ -916,15 +1043,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                   borderSide: BorderSide(color: color.error, width: 2),
                 ),
               ),
-              validator: (value) {
-                if (value?.isEmpty ?? true) {
-                  return 'Please confirm your password';
-                }
-                if (value != _passwordController.text) {
-                  return 'Passwords do not match';
-                }
-                return null;
-              },
+              validator: _validateConfirmPassword,
             ),
           ),
         );
@@ -1010,7 +1129,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFF667eea).withOpacity(0.4),
+                  color: gradientColors.dark1,
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -1038,7 +1157,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                "Sign In",
+                                "Sign Up",
                                 style: textTheme.bodyLarge?.copyWith(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
