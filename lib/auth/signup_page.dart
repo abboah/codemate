@@ -243,16 +243,20 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                     colors: [
                       Color.lerp(
                         gradientColors.black,
-                        gradientColors.dark1,
+                        gradientColors.black,
+                        // gradientColors.dark1,
                         (math.sin(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        gradientColors.dark1,
-                        gradientColors.dark2,
+                        gradientColors.black,
+                        gradientColors.black,
+                        // gradientColors.dark1,
+                        // gradientColors.dark2,
                         (math.cos(_backgroundAnimation.value) + 1) / 2,
                       )!,
                       Color.lerp(
-                        gradientColors.dark2,
+                        //gradientColors.dark2,
+                        gradientColors.black,
                         gradientColors.black,
                         (math.sin(_backgroundAnimation.value + math.pi) + 1) /
                             2,
@@ -626,7 +630,7 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
                 child: const Icon(
                   Icons.flutter_dash,
                   size: 40,
-                  color: Color(0xFF667eea),
+                  color: Colors.black,
                 ),
               ),
               const SizedBox(height: 24),
@@ -1121,17 +1125,13 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               gradient: LinearGradient(
-                colors: [
-                  gradientColors.black,
-                  gradientColors.dark1,
-                  gradientColors.dark2,
-                ],
+                colors: [Colors.lightBlue, Colors.blueAccent],
               ),
               boxShadow: [
                 BoxShadow(
-                  color: gradientColors.dark1,
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  color: Colors.blue,
+                  blurRadius: 2,
+                  offset: const Offset(0, 0),
                 ),
               ],
             ),
@@ -1194,6 +1194,14 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
           onTap: () {
             HapticFeedback.selectionClick();
             authService.continueWithGoogle();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) {
+                  return HomePage();
+                },
+              ),
+            );
           },
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,

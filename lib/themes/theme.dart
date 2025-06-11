@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 final darkTheme = ThemeData(
   brightness: Brightness.dark,
+
   scaffoldBackgroundColor: const Color(0xFF000000),
   extensions: const <ThemeExtension<dynamic>>[
     DarkGradientColors(
@@ -11,7 +12,8 @@ final darkTheme = ThemeData(
       dark2: Color(0xFF111118),
     ),
   ],
-  cardColor: const Color(0xFF0A0A0F),
+  //cardColor: const Color(0xFF0A0A0F),
+  cardColor: Colors.transparent,
   colorScheme: const ColorScheme.dark(
     primary: Color(0xFF1E90FF),
     secondary: Color(0xFF6C5DD3),
