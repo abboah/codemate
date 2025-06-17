@@ -80,13 +80,13 @@ class AuthService {
       await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
 
-        redirectTo:
-            kIsWeb
-                ? const String.fromEnvironment(
-                  'PROD_URL',
-                  defaultValue: 'http://localhost:59600/',
-                )
-                : null,
+        // redirectTo:
+        //     kIsWeb
+        //         ? const String.fromEnvironment(
+        //           'PROD_URL',
+        //           defaultValue: 'http://localhost:59600/',
+        //         )
+        //         : null,
 
         // 'http://localhost:59600/', // or production URL
       );
