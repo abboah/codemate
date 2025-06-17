@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:codemate/auth/components/new_password.dart';
@@ -5,24 +6,26 @@ import 'package:codemate/auth/components/reset_password.dart';
 import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/auth/signup_page.dart';
 import 'package:codemate/home/homepage.dart';
+import 'package:codemate/providers/auth_provider.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  ConsumerState<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
+class _LoginPageState extends ConsumerState<LoginPage>
+    with TickerProviderStateMixin {
   // Initialize Auth Service
-  final authService = AuthService();
 
   // Initialize Controllers
   final _emailController = TextEditingController();
@@ -171,41 +174,42 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
   }
 
   void _handleLogin() async {
-    if (!_formKey.currentState!.validate()) return;
+    //Auth Service
+    final authService = ref.read(authServiceProvider);
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Simulate login process
-    await Future.delayed(const Duration(seconds: 2));
-    final email = _emailController.text;
-    final password = _passwordController.text;
-    try {
-      await authService.loginWithEmailAndPassword(email, password);
-      log("Login Successful: $email");
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) {
-            return HomePage();
-          },
-        ),
-      );
-    } catch (e) {
-      // Todo...implement snackbar error
-      log("Login Error: $e");
+    if (!_formKey.currentState!.validate()) {
+      HapticFeedback.selectionClick();
+      return;
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = true);
+    HapticFeedback.mediumImpact();
 
-    // Success haptic
-    HapticFeedback.lightImpact();
+    try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      await authService.loginWithEmailAndPassword(email, password);
+
+      log("Login Success: $email");
+      unawaited(HapticFeedback.lightImpact());
+    } catch (e) {
+      log("Login Error: $e");
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red.shade900,
+          content: const Text('Login failed. Check credentials'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      unawaited(HapticFeedback.vibrate());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   void _setupAuthListener() {
@@ -958,6 +962,72 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         );
       },
     );
+  } // Helper method for loading overlay
+
+  OverlayEntry _showLoadingOverlay(BuildContext context) {
+    final overlay = OverlayEntry(
+      builder:
+          (context) => Stack(
+            children: [
+              ModalBarrier(
+                color: Colors.black.withOpacity(0.5),
+                dismissible: false,
+              ),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Signing in with Google...'),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    Overlay.of(context).insert(overlay);
+    return overlay;
+  }
+
+  void handleGoogleAuth() async {
+    final authService = ref.read(authServiceProvider);
+    HapticFeedback.selectionClick();
+
+    OverlayEntry? overlay;
+
+    try {
+      overlay = _showLoadingOverlay(context);
+
+      await authService.continueWithGoogle();
+
+      overlay.remove();
+
+      if (!mounted) return;
+
+      // Success feedback
+      unawaited(HapticFeedback.lightImpact());
+    } catch (e) {
+      // Clean up loading on error
+      overlay?.remove();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sign-in failed: ${e.toString()}'),
+          backgroundColor: Colors.red[900],
+        ),
+      );
+      unawaited(HapticFeedback.vibrate());
+    }
   }
 
   Widget _buildGoogleButton(TextTheme textTheme) {
@@ -972,18 +1042,8 @@ class _LoginPageState extends State<LoginPage> with TickerProviderStateMixin {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            authService.continueWithGoogle();
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) {
-                  return HomePage();
-                },
-              ),
-            );
-          },
+          onTap: handleGoogleAuth,
+
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [

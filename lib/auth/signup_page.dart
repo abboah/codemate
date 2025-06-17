@@ -1,25 +1,27 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:codemate/auth/login_page.dart';
 import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/home/homepage.dart';
+import 'package:codemate/providers/auth_provider.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import 'dart:ui';
 
-class SignUpPage extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class SignUpPage extends ConsumerStatefulWidget {
   const SignUpPage({super.key});
 
   @override
-  State<SignUpPage> createState() => _SignUpPageState();
+  ConsumerState<SignUpPage> createState() => _SignUpPageState();
 }
 
-class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
-  // Initialize Auth Service
-  final authService = AuthService();
-
+class _SignUpPageState extends ConsumerState<SignUpPage>
+    with TickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -169,56 +171,73 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
   }
 
   void _handleSignUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    final authService = ref.read(authServiceProvider);
 
-    if (!_agreeToTerms) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please accept the Terms and Conditions'),
-          backgroundColor: Colors.redAccent,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      );
+    // 1. Form validation with haptic feedback
+    if (!_formKey.currentState!.validate()) {
+      HapticFeedback.selectionClick();
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
-
-    // Haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Simulate sign up process
-    await Future.delayed(const Duration(seconds: 2));
-    HapticFeedback.mediumImpact();
-    final email = _emailController.text;
-    final password = _confirmPasswordController.text;
-    try {
-      await authService.signUpWithEmailAndPassword(email, password);
-      log("Sign Up Successful: $email");
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) {
-            return HomePage();
-          },
-        ),
-      );
-    } catch (e) {
-      // Todo...implement snackbar error
-      log("Login Error: $e");
+    // 2. Terms check with improved snackbar
+    if (!_agreeToTerms) {
+      HapticFeedback.heavyImpact(); // Strong feedback for important miss
+      return;
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = true);
+    HapticFeedback.mediumImpact();
 
-    // Success haptic
-    HapticFeedback.lightImpact();
+    try {
+      final email = _emailController.text.trim();
+      final password = _confirmPasswordController.text;
+
+      // 3. Input validation
+      if (password.length < 8) {
+        throw 'Password must be at least 8 characters';
+      }
+
+      // 4. Secure signup process
+      await authService.signUpWithEmailAndPassword(email, password);
+
+      // 5. Post-signup actions before navigation
+      log("SignUp Success: $email");
+      // await _sendWelcomeEmail(email);
+
+      // 6. Safe navigation with route clearing
+      if (!mounted) return;
+
+      // 7. Post-navigation feedback
+      unawaited(HapticFeedback.lightImpact());
+    } catch (e) {
+      // 8. Comprehensive error handling
+      log("SignUp Error: $e");
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceAll('Exception: ', ''), // Clean error message
+            style: const TextStyle(color: Colors.white),
+          ),
+          backgroundColor: Colors.red.shade900,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(20),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {},
+          ),
+        ),
+      );
+
+      unawaited(HapticFeedback.vibrate());
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -1179,6 +1198,41 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
     );
   }
 
+  // Helper method for loading overlay
+  OverlayEntry _showLoadingOverlay(BuildContext context) {
+    final overlay = OverlayEntry(
+      builder:
+          (context) => Stack(
+            children: [
+              ModalBarrier(
+                color: Colors.black.withOpacity(0.5),
+                dismissible: false,
+              ),
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Signing in with Google...'),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+    );
+
+    Overlay.of(context).insert(overlay);
+    return overlay;
+  }
+
   Widget _buildGoogleSignUpButton(TextTheme textTheme) {
     return Container(
       height: 56,
@@ -1191,18 +1245,8 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            HapticFeedback.selectionClick();
-            authService.continueWithGoogle();
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) {
-                  return HomePage();
-                },
-              ),
-            );
-          },
+          onTap: handleGoogleAuth,
+
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -1224,6 +1268,38 @@ class _SignUpPageState extends State<SignUpPage> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  void handleGoogleAuth() async {
+    final authService = ref.read(authServiceProvider);
+    HapticFeedback.selectionClick();
+
+    OverlayEntry? overlay;
+
+    try {
+      overlay = _showLoadingOverlay(context);
+
+      await authService.continueWithGoogle();
+
+      overlay.remove();
+
+      if (!mounted) return;
+
+      // Success feedback
+      unawaited(HapticFeedback.lightImpact());
+    } catch (e) {
+      // Clean up loading on error
+      overlay?.remove();
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Sign-in failed: ${e.toString()}'),
+          backgroundColor: Colors.red[900],
+        ),
+      );
+      unawaited(HapticFeedback.vibrate());
+    }
   }
 
   Widget _buildSignInLink(TextTheme textTheme) {

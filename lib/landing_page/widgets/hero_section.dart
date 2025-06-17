@@ -197,6 +197,7 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
+                                    Spacer(flex: 1),
                                     // Main headline with advanced effects
                                     _buildMainHeadline(isMobile, isTablet),
 
@@ -219,6 +220,8 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
 
                                     // Social proof
                                     _buildSocialProof(isMobile),
+
+                                    Spacer(flex: 1),
                                   ],
                                 ),
                               ),
