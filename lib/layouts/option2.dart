@@ -1,8 +1,13 @@
+import 'package:codemate/layouts/background_pattern.dart';
+import 'package:codemate/layouts/glass_button.dart';
+import 'package:codemate/layouts/hero_section.dart';
+import 'package:codemate/layouts/nav_section.dart';
+import 'package:codemate/layouts/top_appbar.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 
 class RobinDashboardMinimal extends StatefulWidget {
-  const RobinDashboardMinimal({Key? key}) : super(key: key);
+  const RobinDashboardMinimal({super.key});
 
   @override
   State<RobinDashboardMinimal> createState() => _RobinDashboardMinimalState();
@@ -35,7 +40,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
             SafeArea(
               child: Column(
                 children: [
-                  _buildTopAppBar(context, isDesktop),
+                  TopAppbar(isDesktop: isDesktop),
                   Expanded(
                     child: Row(
                       children: [
@@ -73,169 +78,6 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
     );
   }
 
-  Widget _buildTopAppBar(BuildContext context, bool isDesktop) {
-    return Container(
-      height: 80,
-      margin: const EdgeInsets.all(16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(0.2),
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                // Logo
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF667EEA).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.code_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 16),
-
-                const Text(
-                  'Robin',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Search
-                if (isDesktop) ...[
-                  _buildGlassSearchBar(),
-                  const SizedBox(width: 16),
-                ],
-
-                // Profile & Actions
-                _buildProfileSection(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassSearchBar() {
-    return Container(
-      width: 320,
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
-      ),
-      child: TextField(
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          hintText: 'Search anything...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-          prefixIcon: Icon(Icons.search, color: Colors.white.withOpacity(0.6)),
-          suffixIcon: Container(
-            margin: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF667EEA).withOpacity(0.8),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(Icons.tune, color: Colors.white, size: 16),
-          ),
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 20,
-            vertical: 12,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileSection() {
-    return Row(
-      children: [
-        _buildGlassIconButton(Icons.notifications_rounded),
-        const SizedBox(width: 12),
-        _buildGlassIconButton(Icons.brightness_6_rounded),
-        const SizedBox(width: 16),
-
-        // Profile Avatar
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-            ),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF667EEA).withOpacity(0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Center(
-            child: Text(
-              'JD',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGlassIconButton(IconData icon) {
-    return Container(
-      width: 44,
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withOpacity(0.2)),
-      ),
-      child: IconButton(
-        onPressed: () {},
-        icon: Icon(icon, color: Colors.white.withOpacity(0.8), size: 20),
-      ),
-    );
-  }
-
   Widget _buildDesktopSidebar() {
     return Container(
       width: 280,
@@ -257,116 +99,73 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                   child: ListView(
                     padding: const EdgeInsets.all(20),
                     children: [
-                      _buildNavSection('MAIN', [
-                        _buildNavItem(Icons.dashboard_rounded, 'Dashboard', 0),
-                        _buildNavItem(Icons.folder_rounded, 'Projects', 1),
-                        _buildNavItem(
-                          Icons.school_rounded,
-                          'Learning Paths',
-                          2,
-                        ),
-                      ]),
+                      NavSection(
+                        title: 'MAIN',
+                        items: [
+                          NavItem(
+                            icon: Icons.dashboard_rounded,
+                            label: 'Dashboard',
+                            index: 0,
+                          ),
+                          NavItem(
+                            icon: Icons.folder_rounded,
+                            label: 'Projects',
+                            index: 1,
+                          ),
+                          NavItem(
+                            icon: Icons.school_rounded,
+                            label: 'Learning Paths',
+                            index: 2,
+                          ),
+                        ],
+                      ),
 
                       const SizedBox(height: 24),
 
-                      _buildNavSection('TOOLS', [
-                        _buildNavItem(
-                          Icons.chat_bubble_rounded,
-                          'AI Assistant',
-                          3,
-                        ),
-                        _buildNavItem(Icons.code_rounded, 'Code Editor', 4),
-                        _buildNavItem(Icons.quiz_rounded, 'Assessments', 5),
-                      ]),
+                      NavSection(
+                        title: 'TOOLS',
+                        items: [
+                          NavItem(
+                            icon: Icons.chat_bubble_rounded,
+                            label: 'AI Assistant',
+                            index: 3,
+                          ),
+                          NavItem(
+                            icon: Icons.code_rounded,
+                            label: 'Code Editor',
+                            index: 4,
+                          ),
+                          NavItem(
+                            icon: Icons.quiz_rounded,
+                            label: 'Assessments',
+                            index: 5,
+                          ),
+                        ],
+                      ),
 
                       const SizedBox(height: 24),
 
-                      _buildNavSection('SOCIAL', [
-                        _buildNavItem(
-                          Icons.leaderboard_rounded,
-                          'Leaderboard',
-                          6,
-                        ),
-                        _buildNavItem(Icons.people_rounded, 'Community', 7),
-                      ]),
+                      NavSection(
+                        title: 'SOCIAL',
+                        items: [
+                          NavItem(
+                            icon: Icons.leaderboard_rounded,
+                            label: 'Leaderboard',
+                            index: 6,
+                          ),
+                          NavItem(
+                            icon: Icons.people_rounded,
+                            label: 'Community',
+                            index: 7,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
 
                 // User Stats
                 _buildUserStatsCard(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavSection(String title, List<Widget> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 16, bottom: 12),
-          child: Text(
-            title,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 1.2,
-            ),
-          ),
-        ),
-        ...items,
-      ],
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, String label, int index) {
-    final isSelected = selectedIndex == index;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => setState(() => selectedIndex = index),
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            decoration: BoxDecoration(
-              color:
-                  isSelected
-                      ? Colors.white.withOpacity(0.15)
-                      : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-              border:
-                  isSelected
-                      ? Border.all(color: Colors.white.withOpacity(0.3))
-                      : null,
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color:
-                      isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-                  size: 20,
-                ),
-                const SizedBox(width: 14),
-                Text(
-                  label,
-                  style: TextStyle(
-                    color:
-                        isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.7),
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    fontSize: 15,
-                  ),
-                ),
               ],
             ),
           ),
@@ -382,8 +181,8 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            const Color(0xFF667EEA).withOpacity(0.3),
-            const Color(0xFF764BA2).withOpacity(0.3),
+            Colors.lightBlue.withOpacity(0.5),
+            Colors.blueAccent.withOpacity(0.5),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -455,7 +254,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Welcome Hero Section
-                  _buildHeroSection(),
+                  DashboardHeroSection(),
                   const SizedBox(height: 32),
 
                   // Quick Stats
@@ -466,134 +265,6 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                   _buildContentGrid(isDesktop),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildHeroSection() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF667EEA).withOpacity(0.8),
-            const Color(0xFF764BA2).withOpacity(0.8),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF667EEA).withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Good morning, John! ☀️',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 16,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Ready to build\nsomething amazing?',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    _buildGlassButton(
-                      'Generate App',
-                      Icons.auto_awesome_rounded,
-                      () {},
-                      isPrimary: true,
-                    ),
-                    const SizedBox(width: 12),
-                    _buildGlassButton(
-                      'Continue Learning',
-                      Icons.play_arrow_rounded,
-                      () {},
-                      isPrimary: false,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 120,
-            height: 120,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(60),
-              border: Border.all(color: Colors.white.withOpacity(0.2)),
-            ),
-            child: const Icon(
-              Icons.rocket_launch_rounded,
-              size: 50,
-              color: Colors.white,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGlassButton(
-    String text,
-    IconData icon,
-    VoidCallback onPressed, {
-    required bool isPrimary,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color:
-            isPrimary
-                ? Colors.white.withOpacity(0.2)
-                : Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.3)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  text,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
             ),
           ),
         ),
@@ -760,7 +431,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
             Icons.api_rounded,
           ),
           const SizedBox(height: 20),
-          _buildGlassButton(
+          DashboardGlassButton(
             'View All Projects',
             Icons.arrow_forward_rounded,
             () {},
@@ -844,9 +515,9 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                 Container(
                   width: 40,
                   height: 40,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                      colors: [Colors.lightBlue, Colors.blueAccent],
                     ),
                     shape: BoxShape.circle,
                   ),
@@ -880,9 +551,9 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                 hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
                 suffixIcon: Container(
                   margin: const EdgeInsets.all(8),
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                      colors: [Colors.lightBlue, Colors.blueAccent],
                     ),
                     shape: BoxShape.circle,
                   ),
@@ -917,7 +588,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
           const SizedBox(height: 16),
           _buildProgressItem('Flutter Advanced', 0.90, const Color(0xFF3B82F6)),
           const SizedBox(height: 20),
-          _buildGlassButton(
+          DashboardGlassButton(
             'Continue Learning',
             Icons.play_arrow_rounded,
             () {},
@@ -1045,8 +716,11 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
         width: 60,
         height: 60,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+          gradient: LinearGradient(
+            colors: [
+              Colors.lightBlue.withOpacity(0.5),
+              Colors.blueAccent.withOpacity(0.5),
+            ],
           ),
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
@@ -1081,8 +755,11 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
             height: 48,
             margin: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              gradient: LinearGradient(
+                colors: [
+                  Colors.lightBlue.withOpacity(0.5),
+                  Colors.blueAccent.withOpacity(0.5),
+                ],
               ),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
@@ -1204,42 +881,4 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
       ),
     );
   }
-}
-
-class BackgroundPatternPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint =
-        Paint()
-          ..color = Colors.white.withOpacity(0.03)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.2;
-
-    const step = 40.0;
-
-    // Draw grid lines
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-
-    // Draw subtle center gradient
-    final center = Offset(size.width / 2, size.height / 2);
-    final gradient = RadialGradient(
-      colors: [const Color(0xFF667EEA).withOpacity(0.05), Colors.transparent],
-    );
-    canvas.drawCircle(
-      center,
-      size.width * 0.6,
-      Paint()
-        ..shader = gradient.createShader(
-          Rect.fromCircle(center: center, radius: size.width * 0.6),
-        ),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
