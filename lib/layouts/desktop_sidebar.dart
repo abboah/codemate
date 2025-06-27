@@ -126,6 +126,17 @@ class _DesktopSidebarState extends ConsumerState<DesktopSidebar>
                           ),
                         ],
                       ),
+                      NavSection(
+                        title: 'LOGOUT',
+                        items: [
+                          NavItem(
+                            icon: Icons.logout_rounded,
+                            label: "Log Out",
+                            index: 8,
+                            isExpanded: isExpanded,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

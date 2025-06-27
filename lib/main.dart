@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       darkTheme: darkTheme,
       themeMode: ThemeMode.dark,
-      home: AuthGate(),
+      home: RobinDashboardMinimal(),
     );
   }
 }

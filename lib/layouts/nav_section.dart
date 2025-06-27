@@ -1,5 +1,7 @@
 import 'package:codemate/chatbot/chatbot.dart';
+import 'package:codemate/landing_page/landing_page.dart';
 import 'package:codemate/layouts/option2.dart';
+import 'package:codemate/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/nav_provider.dart';
@@ -83,6 +85,54 @@ class _NavItemState extends ConsumerState<NavItem> {
                     return const Chatbot();
                   },
                 ),
+              );
+            } else if (widget.index == 8) {
+              // Logout confirmation dialog
+              showDialog(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      backgroundColor: Colors.grey[900],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      title: const Text(
+                        'Confirm Logout',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      content: const Text(
+                        'Are you sure you want to log out?',
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(color: Colors.blue),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            final authService = ref.read(authServiceProvider);
+                            authService.logout();
+                            Navigator.of(context).pop();
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) {
+                                  return LandingPage();
+                                },
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'Logout',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
               );
             }
           },
