@@ -40,6 +40,7 @@ dependencies:
   supabase_flutter: ^2.9.0
   google_sign_in: ^6.3.0
   flutter_riverpod: ^2.6.1
+  flutter_highlight: ^0.7.0
 
 dev_dependencies:
   flutter_test:

@@ -68,7 +68,7 @@ class LandingPage extends StatelessWidget {
             ),
           ),
           SliverToBoxAdapter(child: TestimonialsSection()),
-          SliverToBoxAdapter(child: PricingSection()),
+          //  SliverToBoxAdapter(child: PricingSection()),
           SliverToBoxAdapter(child: Footer()),
         ],
       ),

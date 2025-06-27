@@ -1,4 +1,8 @@
+import 'package:codemate/chatbot/chatbot.dart';
+import 'package:codemate/layouts/option2.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/nav_provider.dart';
 
 class NavSection extends StatelessWidget {
   final String title;
@@ -29,33 +33,59 @@ class NavSection extends StatelessWidget {
   }
 }
 
-class NavItem extends StatefulWidget {
+class NavItem extends ConsumerStatefulWidget {
   final IconData icon;
   final String label;
   final int index;
+  final bool isExpanded;
   const NavItem({
     super.key,
     required this.icon,
     required this.label,
     required this.index,
+    required this.isExpanded,
   });
 
   @override
-  State<NavItem> createState() => _NavItemState();
+  ConsumerState<NavItem> createState() => _NavItemState();
 }
 
-class _NavItemState extends State<NavItem> {
+class _NavItemState extends ConsumerState<NavItem> {
   @override
   Widget build(BuildContext context) {
-    int selectedIndex = 0;
+    final selectedIndex = ref.watch(selectedNavIndexProvider);
     final isSelected = selectedIndex == widget.index;
+    final isExpanded = widget.isExpanded;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => setState(() => selectedIndex = widget.index),
+          onTap: () {
+            ref.read(selectedNavIndexProvider.notifier).state = widget.index;
+            if (widget.index == 0) {
+              // Navigate to Dashboard
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) {
+                    return RobinDashboardMinimal();
+                  },
+                ),
+              );
+            } else if (widget.index == 3) {
+              // Navigate to Chatbot
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) {
+                    return const Chatbot();
+                  },
+                ),
+              );
+            }
+          },
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -76,20 +106,42 @@ class _NavItemState extends State<NavItem> {
                   widget.icon,
                   color:
                       isSelected ? Colors.white : Colors.white.withOpacity(0.7),
-                  size: 20,
+                  size: 25,
                 ),
                 const SizedBox(width: 14),
-                Text(
-                  widget.label,
-                  style: TextStyle(
-                    color:
-                        isSelected
-                            ? Colors.white
-                            : Colors.white.withOpacity(0.7),
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    fontSize: 15,
-                  ),
-                ),
+                isExpanded
+                    ? Text(
+                      widget.label,
+                      style: TextStyle(
+                        color:
+                            isSelected
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.7),
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.w400,
+                        fontSize: 15,
+                      ),
+                    )
+                    : const SizedBox.shrink(),
+                const Spacer(),
+                // Uncomment the following lines if you want to add a trailing icon
+                // Icon(
+                //   isSelected ? Icons.arrow_forward_ios_rounded : Icons.arrow_back_ios_rounded,
+                //   color: Colors.white.withOpacity(0.7),
+                //   size: 16,
+                // ),
+                //      dense: true,
+                // Text(
+                //   widget.label,
+                //   style: TextStyle(
+                //     color:
+                //         isSelected
+                //             ? Colors.white
+                //             : Colors.white.withOpacity(0.7),
+                //     fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                //     fontSize: 15,
+                //   ),
+                // ),
               ],
             ),
           ),

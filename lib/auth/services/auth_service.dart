@@ -87,8 +87,8 @@ class AuthService {
         //           defaultValue: 'http://localhost:59600/',
         //         )
         //         : null,
-
-        // 'http://localhost:59600/', // or production URL
+        //  redirectTo: 'http://localhost:56697/', // or production URL
+        redirectTo: 'http://robin-three.vercel.app',
       );
     } catch (e) {
       throw Exception("Google sign-in failed: $e");

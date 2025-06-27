@@ -1,20 +1,33 @@
 import 'package:codemate/layouts/background_pattern.dart';
+import 'package:codemate/layouts/desktop_sidebar.dart';
 import 'package:codemate/layouts/glass_button.dart';
 import 'package:codemate/layouts/hero_section.dart';
 import 'package:codemate/layouts/nav_section.dart';
 import 'package:codemate/layouts/top_appbar.dart';
+import 'package:codemate/providers/nav_provider.dart';
 import 'package:flutter/material.dart';
 import 'dart:ui';
 
-class RobinDashboardMinimal extends StatefulWidget {
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class RobinDashboardMinimal extends ConsumerStatefulWidget {
   const RobinDashboardMinimal({super.key});
 
   @override
-  State<RobinDashboardMinimal> createState() => _RobinDashboardMinimalState();
+  ConsumerState<RobinDashboardMinimal> createState() =>
+      _RobinDashboardMinimalState();
 }
 
-class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
-  int selectedIndex = 0;
+class _RobinDashboardMinimalState extends ConsumerState<RobinDashboardMinimal> {
+  @override
+  void initState() {
+    super.initState();
+    // Set default selected index to 0 (Dashboard) when this screen loads
+    Future.microtask(
+      () => ref.read(selectedNavIndexProvider.notifier).state = 0,
+    );
+  }
+
   PageController pageController = PageController();
 
   @override
@@ -47,7 +60,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                         if (isDesktop)
                           Padding(
                             padding: const EdgeInsets.only(right: 10),
-                            child: _buildDesktopSidebar(),
+                            child: DesktopSidebar(),
                           ),
                         Expanded(
                           child: _buildMainDashboard(context, isDesktop),
@@ -75,102 +88,6 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
   Widget _buildBackgroundPattern() {
     return Positioned.fill(
       child: CustomPaint(painter: BackgroundPatternPainter()),
-    );
-  }
-
-  Widget _buildDesktopSidebar() {
-    return Container(
-      width: 280,
-      margin: const EdgeInsets.only(left: 16, bottom: 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Column(
-              children: [
-                // Navigation
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(20),
-                    children: [
-                      NavSection(
-                        title: 'MAIN',
-                        items: [
-                          NavItem(
-                            icon: Icons.dashboard_rounded,
-                            label: 'Dashboard',
-                            index: 0,
-                          ),
-                          NavItem(
-                            icon: Icons.folder_rounded,
-                            label: 'Projects',
-                            index: 1,
-                          ),
-                          NavItem(
-                            icon: Icons.school_rounded,
-                            label: 'Learning Paths',
-                            index: 2,
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      NavSection(
-                        title: 'TOOLS',
-                        items: [
-                          NavItem(
-                            icon: Icons.chat_bubble_rounded,
-                            label: 'AI Assistant',
-                            index: 3,
-                          ),
-                          NavItem(
-                            icon: Icons.code_rounded,
-                            label: 'Code Editor',
-                            index: 4,
-                          ),
-                          NavItem(
-                            icon: Icons.quiz_rounded,
-                            label: 'Assessments',
-                            index: 5,
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      NavSection(
-                        title: 'SOCIAL',
-                        items: [
-                          NavItem(
-                            icon: Icons.leaderboard_rounded,
-                            label: 'Leaderboard',
-                            index: 6,
-                          ),
-                          NavItem(
-                            icon: Icons.people_rounded,
-                            label: 'Community',
-                            index: 7,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-
-                // User Stats
-                _buildUserStatsCard(),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -780,6 +697,7 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
   }
 
   Widget _buildMobileNavItem(IconData icon, int index) {
+    final selectedIndex = ref.watch(selectedNavIndexProvider);
     return IconButton(
       icon: Icon(
         icon,
@@ -788,11 +706,15 @@ class _RobinDashboardMinimalState extends State<RobinDashboardMinimal> {
                 ? Colors.white
                 : Colors.white.withOpacity(0.6),
       ),
-      onPressed:
-          () => setState(() {
-            selectedIndex = index;
-            pageController.jumpToPage(index);
-          }),
+      onPressed: () {
+        ref.read(selectedNavIndexProvider.notifier).state = index;
+        pageController.jumpToPage(index);
+        if (index == 3) {
+          Navigator.pushReplacementNamed(context, '/chatbot');
+        } else if (index == 0) {
+          Navigator.pushReplacementNamed(context, '/dashboard');
+        }
+      },
     );
   }
 
