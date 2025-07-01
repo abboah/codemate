@@ -87,7 +87,7 @@ class AuthService {
         //           defaultValue: 'http://localhost:59600/',
         //         )
         //         : null,
-        //  redirectTo: 'http://localhost:56697/', // or production URL
+        // redirectTo: 'http://localhost:59224/', // or production URL
         redirectTo: 'http://robin-three.vercel.app',
       );
     } catch (e) {

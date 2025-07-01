@@ -94,48 +94,52 @@ class _DesktopSidebarState extends ConsumerState<DesktopSidebar>
                             index: 3,
                             isExpanded: isExpanded,
                           ),
-                          NavItem(
-                            icon: Icons.code_rounded,
-                            label: 'Code Editor',
-                            index: 4,
-                            isExpanded: isExpanded,
-                          ),
-                          NavItem(
-                            icon: Icons.quiz_rounded,
-                            label: 'Assessments',
-                            index: 5,
-                            isExpanded: isExpanded,
-                          ),
+                          //     NavItem(
+                          //       icon: Icons.code_rounded,
+                          //       label: 'Code Editor',
+                          //       index: 4,
+                          //       isExpanded: isExpanded,
+                          //     ),
+                          //     NavItem(
+                          //       icon: Icons.quiz_rounded,
+                          //       label: 'Assessments',
+                          //       index: 5,
+                          //       isExpanded: isExpanded,
+                          //     ),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      NavSection(
-                        title: 'SOCIAL',
-                        items: [
-                          NavItem(
-                            icon: Icons.leaderboard_rounded,
-                            label: 'Leaderboard',
-                            index: 6,
-                            isExpanded: isExpanded,
-                          ),
-                          NavItem(
-                            icon: Icons.people_rounded,
-                            label: 'Community',
-                            index: 7,
-                            isExpanded: isExpanded,
-                          ),
-                        ],
-                      ),
-                      NavSection(
-                        title: 'LOGOUT',
-                        items: [
-                          NavItem(
-                            icon: Icons.logout_rounded,
-                            label: "Log Out",
-                            index: 8,
-                            isExpanded: isExpanded,
-                          ),
-                        ],
+                      // const SizedBox(height: 24),
+                      // NavSection(
+                      //   title: 'SOCIAL',
+                      //   items: [
+                      //     NavItem(
+                      //       icon: Icons.leaderboard_rounded,
+                      //       label: 'Leaderboard',
+                      //       index: 6,
+                      //       isExpanded: isExpanded,
+                      //     ),
+                      //     NavItem(
+                      //       icon: Icons.people_rounded,
+                      //       label: 'Community',
+                      //       index: 7,
+                      //       isExpanded: isExpanded,
+                      //     ),
+                      //   ],
+                      // ),
+                      Spacer(),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20.0),
+                  child: NavSection(
+                    title: 'LOGOUT',
+                    items: [
+                      NavItem(
+                        icon: Icons.logout_rounded,
+                        label: "Log Out",
+                        index: 8,
+                        isExpanded: isExpanded,
                       ),
                     ],
                   ),

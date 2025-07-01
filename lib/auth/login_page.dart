@@ -7,6 +7,7 @@ import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/auth/signup_page.dart';
 import 'package:codemate/home/homepage.dart';
 import 'package:codemate/providers/auth_provider.dart';
+import 'package:codemate/reload.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -207,6 +208,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       );
 
       unawaited(HapticFeedback.vibrate());
+      reloadPage();
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

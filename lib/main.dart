@@ -3,7 +3,7 @@ import 'package:codemate/auth/login_page.dart';
 import 'package:codemate/auth/signup_page.dart';
 import 'package:codemate/chatbot/chatbot.dart';
 import 'package:codemate/landing_page/landing_page.dart';
-import 'package:codemate/layouts/option2.dart';
+import 'package:codemate/layouts/dashboard_page.dart';
 import 'package:codemate/layouts/option3.dart';
 import 'package:codemate/themes/theme.dart';
 import 'package:flutter/material.dart';

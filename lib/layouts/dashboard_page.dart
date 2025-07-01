@@ -75,13 +75,13 @@ class _RobinDashboardMinimalState extends ConsumerState<RobinDashboardMinimal> {
         ),
       ),
 
-      // Floating Bottom Navigation for mobile
-      floatingActionButtonLocation:
-          screenWidth <= 800 ? FloatingActionButtonLocation.centerDocked : null,
-      floatingActionButton:
-          screenWidth <= 800 ? _buildFloatingNav() : _buildDesktopFAB(),
+      // // Floating Bottom Navigation for mobile
+      // floatingActionButtonLocation:
+      //     screenWidth <= 800 ? FloatingActionButtonLocation.centerDocked : null,
+      // floatingActionButton:
+      //     screenWidth <= 800 ? _buildFloatingNav() : _buildDesktopFAB(),
 
-      bottomNavigationBar: screenWidth <= 800 ? _buildGlassBottomBar() : null,
+      // bottomNavigationBar: screenWidth <= 800 ? _buildGlassBottomBar() : null,
     );
   }
 
@@ -295,16 +295,16 @@ class _RobinDashboardMinimalState extends ConsumerState<RobinDashboardMinimal> {
             ),
           ),
           const SizedBox(width: 24),
-          Expanded(
-            flex: 1,
-            child: Column(
-              children: [
-                _buildAiAssistantCard(),
-                const SizedBox(height: 24),
-                _buildUpcomingCard(),
-              ],
-            ),
-          ),
+          // Expanded(
+          //   flex: 1,
+          //   child: Column(
+          //     children: [
+          //       _buildAiAssistantCard(),
+          //       const SizedBox(height: 24),
+          //       _buildUpcomingCard(),
+          //     ],
+          //   ),
+          // ),
         ],
       );
     } else {

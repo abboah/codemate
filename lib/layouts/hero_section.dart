@@ -53,16 +53,16 @@ class DashboardHeroSection extends StatelessWidget {
                 const SizedBox(height: 20),
                 Row(
                   children: [
-                    DashboardGlassButton(
-                      'Generate App',
-                      Icons.auto_awesome_rounded,
-                      () {},
-                      isPrimary: true,
-                    ),
+                    // DashboardGlassButton(
+                    //   'Generate App',
+                    //   Icons.auto_awesome_rounded,
+                    //   () {},
+                    //   isPrimary: true,
+                    // ),
                     const SizedBox(width: 12),
                     DashboardGlassButton(
-                      'Continue Learning',
-                      Icons.play_arrow_rounded,
+                      'Start Project',
+                      Icons.auto_awesome_rounded,
                       () {},
                       isPrimary: false,
                     ),
