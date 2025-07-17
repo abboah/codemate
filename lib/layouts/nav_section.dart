@@ -1,6 +1,7 @@
 import 'package:codemate/chatbot/chatbot.dart';
 import 'package:codemate/landing_page/landing_page.dart';
 import 'package:codemate/layouts/dashboard_page.dart';
+import 'package:codemate/paths/learning_paths_page.dart';
 import 'package:codemate/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,6 +74,16 @@ class _NavItemState extends ConsumerState<NavItem> {
                 MaterialPageRoute(
                   builder: (context) {
                     return RobinDashboardMinimal();
+                  },
+                ),
+              );
+            } else if (widget.index == 2) {
+              // Navigate to Learning Paths
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) {
+                    return const LearningPathsPage();
                   },
                 ),
               );

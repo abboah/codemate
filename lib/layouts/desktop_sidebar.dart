@@ -16,10 +16,10 @@ class _DesktopSidebarState extends ConsumerState<DesktopSidebar>
   @override
   Widget build(BuildContext context) {
     final isExpanded = ref.watch(sidebarExpandedProvider);
-    double sidebarWidth = isExpanded ? 280 : 100;
+    double sidebarWidth = isExpanded ? 220 : 100;
 
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 1000),
       curve: Curves.easeInOut,
       width: sidebarWidth,
       margin: const EdgeInsets.only(left: 16, bottom: 16),
