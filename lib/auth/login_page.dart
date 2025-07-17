@@ -6,6 +6,7 @@ import 'package:codemate/auth/components/reset_password.dart';
 import 'package:codemate/auth/services/auth_service.dart';
 import 'package:codemate/auth/signup_page.dart';
 import 'package:codemate/home/homepage.dart';
+import 'package:codemate/layouts/dashboard_page.dart';
 import 'package:codemate/providers/auth_provider.dart';
 import 'package:codemate/reload.dart';
 import 'package:codemate/themes/dark_theme_extension.dart';
@@ -193,7 +194,12 @@ class _LoginPageState extends ConsumerState<LoginPage>
       await authService.loginWithEmailAndPassword(email, password);
 
       log("Login Success: $email");
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const RobinDashboardMinimal()),
+      );
       unawaited(HapticFeedback.lightImpact());
+      if (!mounted) return;
     } catch (e) {
       log("Login Error: $e");
       if (!mounted) return;
