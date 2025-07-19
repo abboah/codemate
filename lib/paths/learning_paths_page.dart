@@ -24,7 +24,6 @@ class _LearningPathsPageState extends State<LearningPathsPage> {
             child: Column(
               children: [
                 TopAppbar(isDesktop: isDesktop),
-
                 Expanded(
                   child: Row(
                     children: [
@@ -33,7 +32,7 @@ class _LearningPathsPageState extends State<LearningPathsPage> {
                           padding: const EdgeInsets.only(right: 10),
                           child: DesktopSidebar(),
                         ),
-                      //   Expanded(child: _buildPath(context, isDesktop)),
+                      // Main content scrollable only
                       Expanded(child: LearningHub()),
                     ],
                   ),

@@ -5,6 +5,7 @@ import 'package:codemate/chatbot/chatbot.dart';
 import 'package:codemate/landing_page/landing_page.dart';
 import 'package:codemate/layouts/dashboard_page.dart';
 import 'package:codemate/layouts/option3.dart';
+import 'package:codemate/paths/learning_paths_page.dart';
 import 'package:codemate/themes/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
