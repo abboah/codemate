@@ -35,6 +35,8 @@
 //   }
 // }
 // services/auth_service.dart
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -67,8 +69,13 @@ class AuthService {
   Future<AuthResponse> signUpWithEmailAndPassword(
     String email,
     String password,
+    String fullName,
   ) async {
-    final res = await _supabase.auth.signUp(email: email, password: password);
+    final res = await _supabase.auth.signUp(
+      email: email,
+      password: password,
+      data: {'full_name': fullName},
+    );
     if (res.user == null) {
       throw Exception("Sign-up failed. Try again.");
     }
@@ -79,16 +86,6 @@ class AuthService {
     try {
       await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-
-        // redirectTo:
-        //     kIsWeb
-        //         ? const String.fromEnvironment(
-        //           'PROD_URL',
-        //           defaultValue: 'http://localhost:59600/',
-        //         )
-        //         : null,
-        // redirectTo: 'http://localhost:59224/', // or production URL
-        redirectTo: 'http://robin-three.vercel.app',
       );
     } catch (e) {
       throw Exception("Google sign-in failed: $e");
@@ -97,5 +94,36 @@ class AuthService {
 
   Future<void> logout() async {
     await _supabase.auth.signOut();
+  }
+
+  Future<void> deleteAccount() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User not logged in');
+    }
+    try {
+      await _supabase.rpc('delete_user', params: {'user_id': userId});
+    } catch (e) {
+      throw Exception('Failed to delete account: $e');
+    }
+  }
+
+  Future<String> uploadAvatar(File image) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      throw Exception('User not logged in');
+    }
+
+    final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.png';
+    final path = fileName;
+
+    try {
+      await _supabase.storage.from('profile-pictures').upload(path, image);
+      final imageUrl = _supabase.storage.from('profile-pictures').getPublicUrl(path);
+      await _supabase.from('users').update({'avatar_url': imageUrl}).eq('id', userId);
+      return imageUrl;
+    } catch (e) {
+      throw Exception('Failed to upload avatar: $e');
+    }
   }
 }
