@@ -1,21 +1,19 @@
-import 'dart:ui';
-import 'dart:convert';
 import 'dart:async';
-import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:ui';
+
 import 'package:codemate/chatbot/chat_history.dart';
 import 'package:codemate/layouts/background_pattern.dart';
-import 'package:codemate/layouts/nav_section.dart';
+import 'package:codemate/layouts/desktop_sidebar.dart';
 import 'package:codemate/layouts/top_appbar.dart';
+import 'package:codemate/providers/nav_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_highlight/flutter_highlight.dart';
-import 'package:flutter_highlight/themes/github.dart';
 import 'package:flutter_highlight/themes/vs2015.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
-import '../providers/nav_provider.dart';
-import '../providers/chat_history_provider.dart';
-import '../layouts/desktop_sidebar.dart';
+import 'package:http/http.dart' as http;
 
 class ChatMessage {
   final String text;
@@ -42,6 +40,25 @@ class ChatMessage {
       timestamp: timestamp ?? this.timestamp,
       isStreaming: isStreaming ?? this.isStreaming,
     );
+  }
+}
+
+// This is a local provider for the legacy chatbot's history.
+final legacyChatHistoryProvider =
+    StateNotifierProvider<LegacyChatHistoryNotifier, List<List<ChatMessage>>>(
+      (ref) => LegacyChatHistoryNotifier(),
+    );
+
+class LegacyChatHistoryNotifier extends StateNotifier<List<List<ChatMessage>>> {
+  LegacyChatHistoryNotifier() : super([]);
+
+  void addChat(List<ChatMessage> chat) {
+    if (chat.isNotEmpty) {
+      final filtered = chat.where((m) => m.text.trim().isNotEmpty).toList();
+      if (filtered.isNotEmpty) {
+        state = [filtered, ...state];
+      }
+    }
   }
 }
 
@@ -72,7 +89,7 @@ class _ChatbotState extends ConsumerState<Chatbot> {
   final ScrollController _scrollController = ScrollController();
 
   // Replace with your actual Gemini API key
-  final String _apiKey = 'AIzaSyCOOB62Ru855vTalNVIun15iZZokipcjEY';
+  final String _apiKey = dotenv.env['GEMINI_API_KEY']!;
   bool _isLoading = false;
   StreamSubscription<String>? _streamSubscription;
 
@@ -290,7 +307,7 @@ class _ChatbotState extends ConsumerState<Chatbot> {
   void _saveChatToHistory() {
     if (_messages.length > 1) {
       ref
-          .read(chatHistoryProvider.notifier)
+          .read(legacyChatHistoryProvider.notifier)
           .addChat(_messages.reversed.toList());
     }
   }
@@ -380,7 +397,7 @@ class _ChatbotState extends ConsumerState<Chatbot> {
   }
 
   Widget _buildChatScreen(BuildContext context, bool isDesktop) {
-    final chatHistory = ref.watch(chatHistoryProvider);
+    final chatHistory = ref.watch(legacyChatHistoryProvider);
     final chatTitles =
         chatHistory.isEmpty
             ? [
