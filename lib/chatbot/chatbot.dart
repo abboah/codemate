@@ -347,7 +347,7 @@ class _ChatbotState extends ConsumerState<Chatbot> {
                 SafeArea(
                   child: Column(
                     children: [
-                      TopAppbar(isDesktop: isDesktop),
+                      //      TopAppbar(isDesktop: isDesktop),
                       Expanded(
                         child: Row(
                           children: [

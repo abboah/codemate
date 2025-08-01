@@ -1,5 +1,5 @@
 import 'package:codemate/layouts/background_pattern.dart';
-import 'package:codemate/layouts/desktop_sidebar.dart';
+// import 'package:codemate/layouts/desktop_sidebar.dart';
 import 'package:codemate/layouts/learning_hub.dart';
 import 'package:codemate/layouts/top_appbar.dart';
 import 'package:flutter/material.dart';
@@ -23,14 +23,14 @@ class _LearningPathsPageState extends State<LearningPathsPage> {
           SafeArea(
             child: Column(
               children: [
-                TopAppbar(isDesktop: isDesktop),
+                //  TopAppbar(isDesktop: isDesktop),
                 Expanded(
                   child: Row(
                     children: [
                       if (isDesktop)
                         Padding(
                           padding: const EdgeInsets.only(right: 10),
-                          child: DesktopSidebar(),
+                          // child: DesktopSidebar(),
                         ),
                       // Main content scrollable only
                       Expanded(child: LearningHub()),

@@ -1,5 +1,5 @@
 import 'package:codemate/layouts/background_pattern.dart';
-import 'package:codemate/layouts/desktop_sidebar.dart';
+// import 'package:codemate/layouts/desktop_sidebar.dart';
 import 'package:codemate/layouts/glass_button.dart';
 import 'package:codemate/layouts/hero_section.dart';
 import 'package:codemate/layouts/nav_section.dart';
@@ -53,14 +53,14 @@ class _RobinDashboardMinimalState extends ConsumerState<RobinDashboardMinimal> {
             SafeArea(
               child: Column(
                 children: [
-                  TopAppbar(isDesktop: isDesktop),
+                  //       TopAppbar(isDesktop: isDesktop),
                   Expanded(
                     child: Row(
                       children: [
                         if (isDesktop)
                           Padding(
                             padding: const EdgeInsets.only(right: 10),
-                            child: DesktopSidebar(),
+                            // child: DesktopSidebar(),
                           ),
                         Expanded(
                           child: _buildMainDashboard(context, isDesktop),
@@ -153,40 +153,43 @@ class _RobinDashboardMinimalState extends ConsumerState<RobinDashboardMinimal> {
   }
 
   Widget _buildMainDashboard(BuildContext context, bool isDesktop) {
-    return Container(
-      margin: EdgeInsets.only(right: 16, bottom: 16, left: isDesktop ? 0 : 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Welcome Hero Section
-                  DashboardHeroSection(),
-                  const SizedBox(height: 32),
+    return
+    // Container(
+    //   margin: EdgeInsets.only(right: 16, bottom: 16, left: isDesktop ? 0 : 16),
+    //   child: ClipRRect(
+    //     borderRadius: BorderRadius.circular(20),
+    //     child: BackdropFilter(
+    //       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+    //       child: Container(
+    //         decoration: BoxDecoration(
+    //           color: Colors.white.withOpacity(0.05),
+    //           borderRadius: BorderRadius.circular(20),
+    //           border: Border.all(color: Colors.white.withOpacity(0.1)),
+    //         ),
+    //         child:
+    SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Welcome Hero Section
+          DashboardHeroSection(),
+          const SizedBox(height: 32),
 
-                  // Quick Stats
-                  _buildQuickStats(isDesktop),
-                  const SizedBox(height: 32),
+          // Quick Stats
+          _buildQuickStats(isDesktop),
+          const SizedBox(height: 32),
 
-                  // Main Content Grid
-                  _buildContentGrid(isDesktop),
-                ],
-              ),
-            ),
-          ),
-        ),
+          // Main Content Grid
+          _buildContentGrid(isDesktop),
+        ],
       ),
     );
+    //         ),
+    //       ),
+    //     ),
+    //   ),
+    // );
   }
 
   Widget _buildQuickStats(bool isDesktop) {

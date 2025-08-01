@@ -32,6 +32,117 @@ class MyApp extends StatelessWidget {
       darkTheme: darkTheme,
       themeMode: ThemeMode.dark,
       home: AuthGate(),
+      builder: (context, child) {
+        return _ModernDrawerScaffold(child: child!);
+      },
+    );
+  }
+}
+
+class _ModernDrawerScaffold extends StatelessWidget {
+  final Widget child;
+  const _ModernDrawerScaffold({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
+    return Scaffold(
+      key: scaffoldKey,
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () {
+            scaffoldKey.currentState?.openDrawer();
+          },
+        ),
+        title: const Text('Robin'),
+        centerTitle: true,
+        backgroundColor: Colors.grey[900],
+      ),
+      drawer: Drawer(
+        backgroundColor: Colors.grey[900],
+        child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Add your logo or user avatar here
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Row(
+                  children: [
+                    Icon(Icons.flutter_dash, color: Colors.blue, size: 32),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Robin',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.white24),
+              // Navigation items
+              ListTile(
+                leading: Icon(Icons.dashboard_rounded, color: Colors.white),
+                title: Text('Dashboard', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => RobinDashboardMinimal()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.folder_rounded, color: Colors.white),
+                title: Text('Projects', style: TextStyle(color: Colors.white)),
+                onTap: () {},
+              ),
+              ListTile(
+                leading: Icon(Icons.school_rounded, color: Colors.white),
+                title: Text(
+                  'Learning Paths',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => LearningPathsPage()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.chat_bubble_rounded, color: Colors.white),
+                title: Text(
+                  'AI Assistant',
+                  style: TextStyle(color: Colors.white),
+                ),
+                onTap: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => Chatbot()),
+                  );
+                },
+              ),
+              const Spacer(),
+              ListTile(
+                leading: Icon(Icons.logout_rounded, color: Colors.redAccent),
+                title: Text(
+                  'Log Out',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: () {
+                  // TODO: Add logout logic
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => LandingPage()),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+      body: child,
     );
   }
 }
