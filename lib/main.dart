@@ -6,8 +6,12 @@ import 'package:codemate/landing_page/landing_page.dart';
 import 'package:codemate/layouts/dashboard_page.dart';
 import 'package:codemate/layouts/option3.dart';
 import 'package:codemate/paths/learning_paths_page.dart';
+import 'package:codemate/providers/user_provider.dart';
+import 'package:codemate/screens/build_page.dart';
 import 'package:codemate/themes/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:codemate/screens/tour_screen.dart';
+import 'package:codemate/screens/home_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,40 +27,120 @@ void main() async {
   runApp(ProviderScope(child: const MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+// Removed duplicate MyApp StatelessWidget. Only ConsumerStatefulWidget version is used below.
+final isAuthenticatedProvider = StateProvider<bool>((ref) => false);
+final isNewUserProvider = StateProvider<bool?>((ref) => null);
+//final authState = ref.watch(supabaseAuthStateProvider);
+// Replace with your actual user provider
+Future<UserProfile?> _getOrCreateUserProfile() async {
+  try {
+    // Call the RPC function on the database.
+    final response = await Supabase.instance.client.rpc('get_or_create_user');
+
+    // The RPC returns a list of rows. It might be empty.
+    final userList = response as List;
+    if (userList.isEmpty) {
+      // This is the critical check. If the list is empty, something is wrong.
+      debugPrint("Error: get_or_create_user returned no user.");
+      return null;
+    }
+
+    final userMap = userList.first as Map<String, dynamic>;
+    return UserProfile.fromMap(userMap);
+  } catch (e) {
+    // If any other error occurs, return null to signify failure.
+    debugPrint("Error in get_or_create_user: $e");
+    return null;
+  }
+}
+
+class MyApp extends ConsumerWidget {
   const MyApp({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Robin',
-      debugShowCheckedModeBanner: false,
-      darkTheme: darkTheme,
-      themeMode: ThemeMode.dark,
-      home: AuthGate(),
-      builder: (context, child) {
-        return _ModernDrawerScaffold(child: child!);
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authStateAsync = ref.watch(supabaseAuthStateProvider);
+
+    return authStateAsync.when(
+      loading:
+          () => const MaterialApp(
+            home: Scaffold(body: Center(child: CircularProgressIndicator())),
+          ),
+      error:
+          (err, _) => MaterialApp(
+            home: Scaffold(body: Center(child: Text('Auth Error: $err'))),
+          ),
+      data: (authState) {
+        final user = authState.session?.user;
+        if (user == null) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            darkTheme: darkTheme,
+            themeMode: ThemeMode.dark,
+            home: const ModernDrawerScaffold(child: LandingPage()),
+          );
+        }
+
+        // 🔥 Fetch profile here
+        return FutureBuilder<UserProfile?>(
+          future: _getOrCreateUserProfile(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const MaterialApp(
+                home: Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                ),
+              );
+            }
+
+            final profile = snapshot.data;
+            if (profile == null) {
+              return const MaterialApp(
+                home: Scaffold(
+                  body: Center(child: Text("Could not load user profile.")),
+                ),
+              );
+            }
+
+            final hasCompletedOnboarding = profile.hasCompletedOnboarding;
+
+            return MaterialApp(
+              title: 'Robin',
+              debugShowCheckedModeBanner: false,
+              darkTheme: darkTheme,
+              themeMode: ThemeMode.dark,
+              home: ModernDrawerScaffold(
+                child:
+                    hasCompletedOnboarding
+                        ? HomeScreen(profile: profile)
+                        : TourScreen(profile: profile),
+              ),
+              routes: {
+                '/dashboard': (_) => const RobinDashboardMinimal(),
+                '/chatbot': (_) => ModernDrawerScaffold(child: Chatbot()),
+                '/build': (_) => ModernDrawerScaffold(child: BuildPage()),
+                '/paths':
+                    (_) => ModernDrawerScaffold(child: LearningPathsPage()),
+                '/select': (_) => HomeScreen(profile: profile),
+              },
+            );
+          },
+        );
       },
     );
   }
 }
 
-class _ModernDrawerScaffold extends StatelessWidget {
+class ModernDrawerScaffold extends StatelessWidget {
   final Widget child;
-  const _ModernDrawerScaffold({required this.child});
+
+  const ModernDrawerScaffold({Key? key, required this.child}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final GlobalKey<ScaffoldState> scaffoldKey = GlobalKey<ScaffoldState>();
     return Scaffold(
-      key: scaffoldKey,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () {
-            scaffoldKey.currentState?.openDrawer();
-          },
-        ),
         title: const Text('Robin'),
         centerTitle: true,
         backgroundColor: Colors.grey[900],
@@ -67,7 +151,6 @@ class _ModernDrawerScaffold extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Add your logo or user avatar here
               Padding(
                 padding: const EdgeInsets.all(24.0),
                 child: Row(
@@ -86,7 +169,6 @@ class _ModernDrawerScaffold extends StatelessWidget {
                 ),
               ),
               const Divider(color: Colors.white24),
-              // Navigation items
               ListTile(
                 leading: Icon(Icons.dashboard_rounded, color: Colors.white),
                 title: Text('Dashboard', style: TextStyle(color: Colors.white)),
@@ -133,7 +215,6 @@ class _ModernDrawerScaffold extends StatelessWidget {
                   style: TextStyle(color: Colors.redAccent),
                 ),
                 onTap: () {
-                  // TODO: Add logout logic
                   Navigator.of(context).pushReplacement(
                     MaterialPageRoute(builder: (_) => LandingPage()),
                   );
