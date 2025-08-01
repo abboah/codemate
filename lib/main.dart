@@ -78,7 +78,7 @@ class MyApp extends ConsumerWidget {
             debugShowCheckedModeBanner: false,
             darkTheme: darkTheme,
             themeMode: ThemeMode.dark,
-            home: const ModernDrawerScaffold(child: LandingPage()),
+            home: const LandingPage(),
           );
         }
 
@@ -110,12 +110,10 @@ class MyApp extends ConsumerWidget {
               debugShowCheckedModeBanner: false,
               darkTheme: darkTheme,
               themeMode: ThemeMode.dark,
-              home: ModernDrawerScaffold(
-                child:
-                    hasCompletedOnboarding
-                        ? HomeScreen(profile: profile)
-                        : TourScreen(profile: profile),
-              ),
+              home:
+                  hasCompletedOnboarding
+                      ? HomeScreen(profile: profile)
+                      : TourScreen(profile: profile),
               routes: {
                 '/dashboard': (_) => const RobinDashboardMinimal(),
                 '/chatbot': (_) => ModernDrawerScaffold(child: Chatbot()),
@@ -181,7 +179,11 @@ class ModernDrawerScaffold extends StatelessWidget {
               ListTile(
                 leading: Icon(Icons.folder_rounded, color: Colors.white),
                 title: Text('Projects', style: TextStyle(color: Colors.white)),
-                onTap: () {},
+                onTap: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (_) => BuildPage()),
+                  );
+                },
               ),
               ListTile(
                 leading: Icon(Icons.school_rounded, color: Colors.white),
