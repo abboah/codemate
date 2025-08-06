@@ -251,23 +251,9 @@ class MessageBubble extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.7,
         ),
-        child: isUser || message.content.isEmpty
-            ? Text(
+        child: Text(
                 message.content,
                 style: GoogleFonts.poppins(color: Colors.white, height: 1.5),
-              )
-            : AnimatedTextKit(
-                animatedTexts: [
-                  TyperAnimatedText(
-                    message.content,
-                    textStyle:
-                        GoogleFonts.poppins(color: Colors.white, height: 1.5),
-                    speed: const Duration(milliseconds: 30),
-                  ),
-                ],
-                isRepeatingAnimation: false,
-                repeatForever: false,
-                displayFullTextOnTap: true,
               ),
       ),
     );

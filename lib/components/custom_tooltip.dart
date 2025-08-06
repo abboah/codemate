@@ -27,6 +27,7 @@ class CustomTooltip extends StatelessWidget {
         border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: child,
+      
     );
   }
 }

@@ -48,6 +48,9 @@ dependencies:
   file_picker: ^10.2.0
   animated_text_kit: ^4.2.3
   flutter_markdown: ^0.7.7+1
+  highlight: 0.7.0
+  intl: ^0.20.2
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
@@ -75,6 +78,7 @@ flutter:
   assets:
     - .env
     - assets/images/
+    - assets/course_images/
   #  - assets/icons/
   #  - assets/
 

@@ -18,12 +18,20 @@ class UserProfile {
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
+    final settings = map['user_settings'];
+    // Handle the case where settings might be a list with one item or a single object
+    final settingsMap = settings is List && settings.isNotEmpty ? settings.first : settings;
+
+    final hasCompletedOnboarding = settingsMap != null && settingsMap is Map
+        ? settingsMap['has_completed_onboarding'] ?? false
+        : false;
+
     return UserProfile(
       id: map['id'],
       username: map['username'] ?? '',
       fullName: map['full_name'] ?? '',
       email: map['email'] ?? '',
-      hasCompletedOnboarding: map['has_completed_onboarding'] ?? false,
+      hasCompletedOnboarding: hasCompletedOnboarding,
     );
   }
 }
@@ -37,10 +45,10 @@ final userProfileProvider = FutureProvider<UserProfile?>((ref) async {
   try {
     final response = await Supabase.instance.client
         .from('users')
-        .select()
+        .select('*, user_settings!inner(has_completed_onboarding)')
         .eq('id', user.id)
         .maybeSingle();
-    
+
     if (response == null) {
       return null;
     }

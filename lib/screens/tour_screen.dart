@@ -53,8 +53,8 @@ class _TourScreenState extends State<TourScreen> with TickerProviderStateMixin {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
       await Supabase.instance.client
-          .from('users')
-          .update({'has_completed_onboarding': true}).eq('id', userId);
+          .from('user_settings')
+          .update({'has_completed_onboarding': true}).eq('user_id', userId);
 
       if (mounted) {
         Navigator.of(context).pushReplacement(

@@ -5,7 +5,7 @@ class ChatService {
   Stream<String> sendMessage(
       String message, List<Content> history, String? systemInstruction) {
     final model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash-lite',
       apiKey: dotenv.env['GEMINI_API_KEY']!,
       systemInstruction:
           systemInstruction != null ? Content.system(systemInstruction) : null,
@@ -24,7 +24,7 @@ class ChatService {
   Future<String> generateChatTitle(
       String userMessage, String aiResponse) async {
     final model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash-lite',
       apiKey: dotenv.env['GEMINI_API_KEY']!,
       systemInstruction: Content.system(
           'You are a title generator. Create a short, concise title (5 words or less) for a conversation based on the first user message and the first AI response. Do not use quotes or any special characters.'),

@@ -5,8 +5,9 @@ class TwoColumnLayout extends StatelessWidget {
   final String pageTitle;
   final String pageDescription;
   final String buttonText;
-  final VoidCallback onButtonPressed;
+  final VoidCallback? onButtonPressed;
   final Widget rightColumnContent;
+  final bool isLoading;
 
   const TwoColumnLayout({
     super.key,
@@ -15,6 +16,7 @@ class TwoColumnLayout extends StatelessWidget {
     required this.buttonText,
     required this.onButtonPressed,
     required this.rightColumnContent,
+    this.isLoading = false,
   });
 
   @override
@@ -84,7 +86,7 @@ class TwoColumnLayout extends StatelessWidget {
 
   Widget _buildNewItemCard() {
     return InkWell(
-      onTap: onButtonPressed,
+      onTap: isLoading ? null : onButtonPressed,
       borderRadius: BorderRadius.circular(16),
       child: Container(
         padding: const EdgeInsets.all(24),
@@ -95,20 +97,33 @@ class TwoColumnLayout extends StatelessWidget {
             width: 2,
           ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.add_circle_outline, color: Colors.white, size: 28),
-            const SizedBox(width: 16),
-            Text(
-              buttonText,
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
-              ),
-            ),
-          ],
+        child: Center(
+          heightFactor: 1,
+          child: isLoading
+              ? const SizedBox(
+                  height: 28,
+                  width: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: Colors.white,
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.add_circle_outline,
+                        color: Colors.white, size: 28),
+                    const SizedBox(width: 16),
+                    Text(
+                      buttonText,
+                      style: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
