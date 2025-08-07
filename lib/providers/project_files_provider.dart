@@ -33,14 +33,52 @@ class ProjectFilesProvider extends ChangeNotifier {
           .from('project_files')
           .select()
           .eq('project_id', projectId)
-          .order('file_path', ascending: true);
+          .order('path', ascending: true);
 
       _files =
           (response as List).map((item) => ProjectFile.fromMap(item)).toList();
+      _error = null;
     } catch (e) {
       _error = "Failed to fetch project files: $e";
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> createFile(String path, String content) async {
+    try {
+      await _client.from('project_files').insert({
+        'project_id': projectId,
+        'path': path,
+        'content': content,
+      });
+      await fetchFiles(); // Refresh the list
+    } catch (e) {
+      _error = "Failed to create file: $e";
+      notifyListeners();
+    }
+  }
+
+  Future<void> updateFileContent(String fileId, String newContent) async {
+    try {
+      await _client.from('project_files').update({
+        'content': newContent,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', fileId);
+      await fetchFiles(); // Refresh the list
+    } catch (e) {
+      _error = "Failed to update file: $e";
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteFile(String fileId) async {
+    try {
+      await _client.from('project_files').delete().eq('id', fileId);
+      await fetchFiles(); // Refresh the list
+    } catch (e) {
+      _error = "Failed to delete file: $e";
       notifyListeners();
     }
   }

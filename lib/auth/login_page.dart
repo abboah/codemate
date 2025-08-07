@@ -517,7 +517,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                             offset: Offset(0, _cardSlideAnimation.value),
                             child: Opacity(
                               opacity: _cardFadeAnimation.value,
-                              child: Container(
+                              child: SizedBox(
                                 width: math.min(size.width * 0.95, 400),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(24),

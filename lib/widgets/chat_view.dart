@@ -5,15 +5,20 @@ import 'package:codemate/widgets/chat_message_bubble.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'dart:ui';
+
+const Color seaBlue = Color(0xFF006994);
 
 class ChatView extends ConsumerStatefulWidget {
   final Topic topic;
   final Enrollment enrollment;
   final List<TopicNote> notes;
   final TopicChat? chat;
+  final String selectedModel;
   final Function(TopicChat) onNewChatStarted;
 
   const ChatView({
@@ -22,6 +27,7 @@ class ChatView extends ConsumerStatefulWidget {
     required this.enrollment,
     required this.notes,
     required this.chat,
+    required this.selectedModel,
     required this.onNewChatStarted,
   });
 
@@ -37,7 +43,6 @@ class _ChatViewState extends ConsumerState<ChatView> {
   List<ChatMessage> _messages = [];
   bool _isLoading = false;
   bool _isSending = false;
-  String _selectedModel = 'gemini-1.5-flash-latest';
 
   @override
   void initState() {
@@ -60,7 +65,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        _buildHeader(),
+        // Header is now in the parent TopicChatModal
         Expanded(
           child: (widget.chat == null && _messages.isEmpty)
               ? _buildNewChatView()
@@ -71,66 +76,26 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      // Make header transparent and remove border
-      decoration: BoxDecoration(
-        color: Colors.transparent,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          PopupMenuButton<String>(
-            initialValue: _selectedModel,
-            onSelected: (String model) {
-              setState(() {
-                _selectedModel = model;
-              });
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'gemini-1.5-flash-latest',
-                child: ListTile(
-                  leading: Icon(Icons.flash_on),
-                  title: Text('Robin basic'),
-                  subtitle: Text('Great for most tasks'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'gemini-2.5-flash',
-                child: ListTile(
-                  leading: Icon(Icons.star),
-                  title: Text('Robin +'),
-                  subtitle: Text('For more advanced use cases'),
-                ),
-              ),
-            ],
-            child: Row(
-              children: [
-                Text(
-                  _selectedModel == 'gemini-1.5-flash-latest' ? 'Robin basic' : 'Robin +',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-                const Icon(Icons.arrow_drop_down, color: Colors.white),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildNewChatView() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white38),
-          SizedBox(height: 16),
+          Icon(Icons.auto_awesome, size: 64, color: seaBlue.withOpacity(0.8)),
+          const SizedBox(height: 24),
           Text(
-            'Ask Robin anything about this topic.',
-            style: TextStyle(color: Colors.white70, fontSize: 18),
+            'Ask Robin anything about\n${widget.topic.title}',
+            style: GoogleFonts.poppins(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Start a new conversation below.',
+            style: GoogleFonts.poppins(color: Colors.white70, fontSize: 16),
             textAlign: TextAlign.center,
           ),
         ],
@@ -140,36 +105,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Widget _buildExistingChatView() {
     return _isLoading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: CircularProgressIndicator(color: seaBlue))
         : ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             itemCount: _messages.length,
             itemBuilder: (context, index) {
               final message = _messages[index];
               final isLastAiMessage = index == _messages.length - 1 && message.sender == 'ai';
               
-              return Column(
-                crossAxisAlignment: message.sender == 'user' 
-                    ? CrossAxisAlignment.end 
-                    : CrossAxisAlignment.start,
-                children: [
-                  ChatMessageBubble(message: message),
-                  if (isLastAiMessage && !_isSending)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4, right: 8),
-                      child: IconButton(
-                        icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
-                        tooltip: 'Copy Message',
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: message.content));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Copied to clipboard!')),
-                          );
-                        },
-                      ),
-                    ),
-                ],
+              return ChatMessageBubble(
+                message: message,
+                isLastAiMessage: isLastAiMessage && !_isSending,
               );
             },
           );
@@ -177,37 +124,56 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Widget _buildMessageInputField() {
     return Container(
-      padding: const EdgeInsets.all(16.0),
-      alignment: Alignment.center,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 800), // Center and constrain width
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _messageController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Type your message...',
-                  hintStyle: const TextStyle(color: Colors.white54),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    style: GoogleFonts.poppins(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'Ask a follow-up...',
+                      hintStyle: GoogleFonts.poppins(color: Colors.white54),
+                      border: InputBorder.none,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    ),
+                    onSubmitted: (_) => _sendMessage(),
                   ),
                 ),
-                onSubmitted: (_) => _sendMessage(),
-              ),
+                const SizedBox(width: 8),
+                _isSending
+                    ? const Padding(
+                        padding: EdgeInsets.all(8.0),
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        ),
+                      )
+                    : IconButton(
+                        icon: const Icon(Icons.send, color: Colors.white),
+                        style: IconButton.styleFrom(
+                          backgroundColor: seaBlue,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _sendMessage,
+                      ),
+              ],
             ),
-            const SizedBox(width: 16),
-            _isSending
-                ? const CircularProgressIndicator()
-                : IconButton(
-                    icon: const Icon(Icons.send, color: Colors.blueAccent),
-                    onPressed: _sendMessage,
-                  ),
-          ],
+          ),
         ),
       ),
     );
@@ -274,7 +240,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       Your response:
     """;
     
-    final stream = ref.read(dynamicGeminiProvider(_selectedModel)).generateContentStream([Content.text(prompt)]);
+    final stream = ref.read(dynamicGeminiProvider(widget.selectedModel)).generateContentStream([Content.text(prompt)]);
     
     final aiMessage = ChatMessage(
       id: _uuid.v4(),
@@ -328,7 +294,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
       --- END HISTORY ---
       Your response:
     """;
-    final stream = ref.read(dynamicGeminiProvider(_selectedModel)).generateContentStream([Content.text(prompt)]);
+    final stream = ref.read(dynamicGeminiProvider(widget.selectedModel)).generateContentStream([Content.text(prompt)]);
 
     final aiMessage = ChatMessage(
       id: _uuid.v4(),

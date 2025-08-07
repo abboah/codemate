@@ -1,94 +1,69 @@
 import 'dart:async';
-import 'package:codemate/models/project.dart';
+import 'dart:convert';
+import 'package:codemate/models/agent_chat_message.dart';
+import 'package:codemate/providers/project_files_provider.dart';
 import 'package:codemate/services/chat_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:codemate/providers/active_chat_provider.dart';
-import 'package:codemate/providers/chat_history_provider.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_generative_ai/google_generative_ai.dart' as gen_ai;
+import 'package:uuid/uuid.dart';
 
-class AgentChatMessage {
-  final String id;
-  String content;
-  final bool isUser;
-  final DateTime createdAt;
+final chatServiceProvider = Provider((ref) => ChatService());
 
-  AgentChatMessage({
-    required this.id,
-    required this.content,
-    required this.isUser,
-    required this.createdAt,
-  });
-
-  factory AgentChatMessage.fromMap(Map<String, dynamic> map) {
-    return AgentChatMessage(
-      id: map['id'],
-      content: map['content'],
-      isUser: map['sender'] == 'user',
-      createdAt: DateTime.parse(map['created_at']),
-    );
-  }
-
-  Content toContent() {
-    return Content(isUser ? 'user' : 'model', [TextPart(content)]);
-  }
-}
+final projectChatsProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, projectId) async {
+  final response = await Supabase.instance.client
+      .from('agent_chats')
+      .select('id, title, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', ascending: false);
+  return List<Map<String, dynamic>>.from(response);
+});
 
 final agentChatProvider =
-    ChangeNotifierProvider.family<AgentChatProvider, (String?, Project?)>(
-  (ref, ids) {
-    final provider = AgentChatProvider(ref: ref, chatId: ids.$1, project: ids.$2);
-    provider.fetchMessages();
-    return provider;
-  },
-);
+    ChangeNotifierProvider.family<AgentChatNotifier, String>((ref, chatId) {
+  return AgentChatNotifier(chatId, ref.read(chatServiceProvider), ref);
+});
 
-class AgentChatProvider extends ChangeNotifier {
-  final Ref ref;
-  final String? chatId;
-  final Project? project;
+class AgentChatNotifier extends ChangeNotifier {
+  final String chatId;
+  final ChatService _chatService;
   final SupabaseClient _client = Supabase.instance.client;
-  final ChatService _chatService = ChatService();
+  final Uuid _uuid = const Uuid();
+  final Ref _ref;
 
-  StreamSubscription<String>? _streamSubscription;
-
-  AgentChatProvider({required this.ref, required this.chatId, required this.project});
-
-  List<AgentChatMessage> _messages = [];
-  bool _isLoading = false;
-  bool _isGenerating = false;
-  String? _error;
-
-  List<AgentChatMessage> get messages => _messages;
-  bool get isLoading => _isLoading;
-  bool get isGenerating => _isGenerating;
-  String? get error => _error;
-
-  @override
-  void dispose() {
-    _streamSubscription?.cancel();
-    super.dispose();
+  AgentChatNotifier(this.chatId, this._chatService, this._ref) {
+    if (chatId.isNotEmpty) {
+      fetchMessages();
+    }
   }
 
+  List<AgentChatMessage> _messages = [];
+  List<AgentChatMessage> get messages => _messages;
+
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+
+  bool _isSending = false;
+  bool get isSending => _isSending;
+
+  String? _error;
+  String? get error => _error;
+
   Future<void> fetchMessages() async {
-    if (chatId == null) {
-      _messages = [];
-      return;
-    }
+    if (chatId.isEmpty) return;
     _isLoading = true;
     notifyListeners();
-
     try {
       final response = await _client
-          .from('messages')
+          .from('agent_chat_messages')
           .select()
-          .eq('chat_id', chatId!)
-          .order('created_at', ascending: true);
+          .eq('chat_id', chatId)
+          .order('sent_at', ascending: true);
 
-      _messages = (response as List)
-          .map((item) => AgentChatMessage.fromMap(item))
-          .toList();
+      _messages = response.map((data) => AgentChatMessage.fromMap(data)).toList();
+      _error = null;
     } catch (e) {
       _error = "Failed to fetch messages: $e";
     } finally {
@@ -97,83 +72,145 @@ class AgentChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> sendMessage(String text) async {
-    if (project == null || chatId == null) return;
+  Future<void> sendMessage({
+    required String text,
+    required String model,
+  }) async {
+    _isSending = true;
+    notifyListeners();
 
     final userMessage = AgentChatMessage(
-      id: DateTime.now().toIso8601String(), // Temp ID
+      id: _uuid.v4(),
+      chatId: chatId,
+      sender: MessageSender.user,
+      messageType: AgentMessageType.text,
       content: text,
-      isUser: true,
-      createdAt: DateTime.now(),
+      sentAt: DateTime.now(),
     );
+    
+    final aiPlaceholder = AgentChatMessage(
+      id: _uuid.v4(),
+      chatId: chatId,
+      sender: MessageSender.ai,
+      messageType: AgentMessageType.text,
+      content: '...',
+      sentAt: DateTime.now(),
+    );
+
     _messages.add(userMessage);
-    _isGenerating = true;
+    _messages.add(aiPlaceholder);
     notifyListeners();
 
-    // Save user message immediately
-    await _client.from('messages').insert({
-      'chat_id': chatId,
-      'sender': 'user',
-      'content': text,
-    });
+    String fullResponse = '';
 
-    _startStreamingResponse(userMessage);
-  }
+    try {
+      final history = _messages.where((m) => m.id != userMessage.id && m.id != aiPlaceholder.id).map((m) {
+        final role = m.sender == MessageSender.user ? 'user' : 'model';
+        return gen_ai.Content(role, [gen_ai.TextPart(m.content)]);
+      }).toList();
 
-  void _startStreamingResponse(AgentChatMessage userMessage) {
-    final history = _messages.map((m) => m.toContent()).toList();
+      const systemInstruction =
+          'You are Robin, an expert AI software development assistant...';
 
-    final systemPrompt = """
-      You are Robin, an expert AI pair programmer.
-      You are currently working on a project with the following details:
-      - Project Name: ${project!.name}
-      - Description: ${project!.description}
-      
-      Your task is to assist the user with their requests, providing code, explanations, and solutions related to this project.
-      """;
+      final stream = _chatService.sendMessage(text, history, systemInstruction, model: model);
 
-    final aiMessage = AgentChatMessage(
-      id: DateTime.now().toIso8601String(), // Temp ID
-      content: '',
-      isUser: false,
-      createdAt: DateTime.now(),
-    );
-    _messages.add(aiMessage);
-    notifyListeners();
-
-    _streamSubscription = _chatService
-        .sendMessage(userMessage.content, history, systemPrompt)
-        .listen((chunk) {
-      aiMessage.content += chunk;
-      notifyListeners();
-    }, onDone: () async {
-      _isGenerating = false;
-      
-      // Save the AI message
-      await _client.from('messages').insert({
-        'chat_id': chatId,
-        'sender': 'agent',
-        'content': aiMessage.content,
-      });
-
-      // Check if this was the first exchange to generate title
-      if (_messages.length == 2) {
-        final title = await _chatService.generateChatTitle(
-            userMessage.content, aiMessage.content);
-        await _client
-            .from('agent_chats')
-            .update({'name': title}).eq('id', chatId!);
-        // Invalidate history to show the new title
-        ref.invalidate(chatHistoryProvider(project!.id));
+      await for (var chunk in stream) {
+        fullResponse += chunk;
+        final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
+        if(index != -1) {
+          _messages[index] = _messages[index].copyWith(content: fullResponse);
+          notifyListeners();
+        }
       }
 
+      // Save both messages after streaming is complete
+      await _client.from('agent_chat_messages').insert(
+        {
+          'id': userMessage.id,
+          'chat_id': userMessage.chatId,
+          'sender': 'user',
+          'message_type': 'text',
+          'content': userMessage.content,
+          'sent_at': userMessage.sentAt.toIso8601String(),
+        }
+      );
+      await _client.from('agent_chat_messages').insert(
+        {
+          'id': aiPlaceholder.id,
+          'chat_id': chatId,
+          'sender': 'ai',
+          'message_type': 'text',
+          'content': fullResponse,
+          'sent_at': aiPlaceholder.sentAt.toIso8601String(),
+        }
+      );
+
+      _handleToolCall(fullResponse);
+
+    } catch (e) {
+       final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
+      if(index != -1) {
+        _messages[index] = _messages[index].copyWith(content: "Sorry, an error occurred: $e");
+      }
+      _error = "Failed to send message: $e";
+    } finally {
+      _isSending = false;
       notifyListeners();
-    }, onError: (e) {
-      _error = "Failed to get response: $e";
-      aiMessage.content = "Error: $_error";
-      _isGenerating = false;
-      _messages.remove(userMessage); // Remove the user message if AI fails
-      notifyListeners();
-    });
+    }
+  }
+
+  void _handleToolCall(String response) async {
+    try {
+      final decodedResponse = jsonDecode(response);
+      if (decodedResponse is Map<String, dynamic> && decodedResponse.containsKey('tool_code')) {
+        final toolCode = decodedResponse['tool_code'];
+        final args = decodedResponse['args'] as Map<String, dynamic>;
+        final projectId = _ref.read(projectFilesProvider(chatId).notifier).projectId;
+        final filesNotifier = _ref.read(projectFilesProvider(projectId).notifier);
+
+        final toolMessage = AgentChatMessage(
+          id: _uuid.v4(),
+          chatId: chatId,
+          sender: MessageSender.ai,
+          messageType: AgentMessageType.toolInProgress,
+          content: 'Executing tool: $toolCode...',
+          sentAt: DateTime.now(),
+        );
+        _messages.add(toolMessage);
+        notifyListeners();
+
+        try {
+          switch (toolCode) {
+            case 'file_system.create_file':
+              await filesNotifier.createFile(args['path'], args['content']);
+              break;
+            case 'file_system.update_file':
+              await filesNotifier.updateFileContent(args['file_id'], args['content']);
+              break;
+            case 'file_system.delete_file':
+              await filesNotifier.deleteFile(args['file_id']);
+              break;
+          }
+          final index = _messages.indexWhere((m) => m.id == toolMessage.id);
+          if (index != -1) {
+            _messages[index] = toolMessage.copyWith(
+              messageType: AgentMessageType.toolResult,
+              content: 'Tool executed successfully.',
+            );
+          }
+        } catch (e) {
+          final index = _messages.indexWhere((m) => m.id == toolMessage.id);
+          if (index != -1) {
+            _messages[index] = toolMessage.copyWith(
+              messageType: AgentMessageType.error,
+              content: 'Error executing tool: $e',
+            );
+          }
+        }
+        notifyListeners();
+      }
+    } catch (e) {
+      // Not a tool call, ignore
+    }
   }
 }

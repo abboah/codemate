@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:codemate/components/build/brainstorm_modal.dart';
 import 'package:codemate/components/build/describe_modal.dart';
-import 'package:codemate/screens/agent_page.dart';
+import 'package:codemate/screens/ide_page.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -13,11 +13,10 @@ class BuildPageLanding extends StatelessWidget {
       context: context,
       builder: (context) => const BrainstormModal(),
     );
-    if (newProjectId != null) {
-      Navigator.of(context).push(
+    if (newProjectId != null && context.mounted) {
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => AgentPage(projectId: newProjectId),
-          settings: RouteSettings(arguments: newProjectId),
+          builder: (context) => IdePage(projectId: newProjectId),
         ),
       );
     }
@@ -28,11 +27,10 @@ class BuildPageLanding extends StatelessWidget {
       context: context,
       builder: (context) => const DescribeModal(),
     );
-    if (newProjectId != null) {
-      Navigator.of(context).push(
+    if (newProjectId != null && context.mounted) {
+      Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (context) => AgentPage(projectId: newProjectId),
-          settings: RouteSettings(arguments: newProjectId),
+          builder: (context) => IdePage(projectId: newProjectId),
         ),
       );
     }
