@@ -47,7 +47,11 @@ serve(async (req) => {
         .eq('project_id', projectId)
         .order('path');
       const filePaths = Array.isArray((filesList as any)) ? (filesList as any).map((r: any) => r.path) : (((filesList as any)?.data) || []).map((r: any) => r.path);
-      const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.`;
+      const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.
+      
+      NOTE:
+        Do not start a conversation with any phrase like "Robin:", "AI:", "Assistant:" or anything similar. Just provide the response. If you will intriduce yourself to the user, do it only at the start of the conversation.
+      `;
 
       // Build compositional contents
       const contents: any[] = Array.isArray(history) && history.length > 0 ? [...history] : [];

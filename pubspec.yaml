@@ -53,6 +53,7 @@ dependencies:
   uuid: ^4.5.1
   multi_split_view: ^3.6.0
   flutter_code_editor: ^0.3.4
+  flutter_mentions: ^2.0.1
 
 dev_dependencies:
   flutter_test:

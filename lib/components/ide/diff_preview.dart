@@ -6,13 +6,17 @@ class DiffPreview extends StatefulWidget {
   final String oldContent;
   final String newContent;
   final int maxLines;
+  final bool collapsible;
+  final bool scrollable;
 
   const DiffPreview({
     super.key,
     required this.path,
     required this.oldContent,
     required this.newContent,
-    this.maxLines = 100, // Increased max lines
+    this.maxLines = 100,
+    this.collapsible = true,
+    this.scrollable = false,
   });
 
   @override
@@ -23,11 +27,19 @@ class _DiffPreviewState extends State<DiffPreview> {
   bool _expanded = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (!widget.collapsible) {
+      _expanded = true;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final lines = _buildUnifiedDiff(widget.oldContent, widget.newContent);
     final visibleLines = _expanded ? lines : lines.take(15).toList();
 
-    return Container(
+    final content = Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -52,9 +64,10 @@ class _DiffPreviewState extends State<DiffPreview> {
                   child: Text(
                     widget.path,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.jetBrainsMono(
                       fontWeight: FontWeight.w500,
                       color: Colors.white.withOpacity(0.9),
+                      fontSize: 12,
                     ),
                   ),
                 ),
@@ -65,7 +78,7 @@ class _DiffPreviewState extends State<DiffPreview> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: DefaultTextStyle(
-              style: GoogleFonts.robotoMono(fontSize: 13, height: 1.5),
+              style: GoogleFonts.jetBrainsMono(fontSize: 13, height: 1.5, color: Colors.white.withOpacity(0.9)),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: visibleLines.map((l) => _buildLine(context, l)).toList(),
@@ -73,7 +86,7 @@ class _DiffPreviewState extends State<DiffPreview> {
             ),
           ),
           // Expander
-          if (lines.length > 15)
+          if (widget.collapsible && lines.length > 15)
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
               borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
@@ -102,6 +115,23 @@ class _DiffPreviewState extends State<DiffPreview> {
         ],
       ),
     );
+
+    if (widget.scrollable) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: Colors.black.withOpacity(0.25),
+          ),
+          child: SingleChildScrollView(
+            child: content,
+          ),
+        ),
+      );
+    }
+
+    return content;
   }
 
   Widget _buildLine(BuildContext context, _DiffLine line) {
@@ -135,7 +165,7 @@ class _DiffPreviewState extends State<DiffPreview> {
         children: [
           Container(width: 3, height: 19.5, color: barColor), // Bar
           const SizedBox(width: 8),
-          Text(prefix, style: TextStyle(color: Colors.white.withOpacity(0.5))),
+          Text(prefix, style: GoogleFonts.jetBrainsMono(color: Colors.white.withOpacity(0.5), fontSize: 13)),
           const SizedBox(width: 8),
           Expanded(
             child: RichText(
@@ -153,15 +183,15 @@ class _DiffPreviewState extends State<DiffPreview> {
     final stringColor = Colors.orange.shade300;
     final numberColor = Colors.purple.shade200;
     final commentColor = Colors.green.shade300;
-    final defaultColor = Colors.white.withOpacity(0.85);
+    final defaultColor = Colors.white.withOpacity(0.9);
 
     const keywords = {'var', 'final', 'const', 'String', 'int', 'double', 'bool', 'if', 'else', 'for', 'while', 'return', 'class', 'extends', 'with', 'void', 'new', 'await', 'async', 'import', 'export', 'part', 'package'};
 
     final String pattern = [
-      r'(\b(?:' + keywords.join('|') + r')\b)', // Keywords
-      r'(".*?"|".*?")', // Strings
-      r'(\b\d+\.?\d*\b)', // Numbers
-      r'(//.*)', // Comments
+      r'(\b(?:' + keywords.join('|') + r')\b)',
+      r'(".*?"|".*?")',
+      r'(\b\d+\.?\d*\b)',
+      r'(//.*)',
     ].join('|');
 
     final RegExp exp = RegExp(pattern);
@@ -170,18 +200,18 @@ class _DiffPreviewState extends State<DiffPreview> {
       exp,
       onMatch: (Match m) {
         if (m[1] != null) {
-          spans.add(TextSpan(text: m[1], style: TextStyle(color: keywordColor, fontWeight: FontWeight.bold)));
+          spans.add(TextSpan(text: m[1], style: GoogleFonts.jetBrainsMono(color: keywordColor, fontWeight: FontWeight.bold)));
         } else if (m[2] != null) {
-          spans.add(TextSpan(text: m[2], style: TextStyle(color: stringColor)));
+          spans.add(TextSpan(text: m[2], style: GoogleFonts.jetBrainsMono(color: stringColor)));
         } else if (m[3] != null) {
-          spans.add(TextSpan(text: m[3], style: TextStyle(color: numberColor)));
+          spans.add(TextSpan(text: m[3], style: GoogleFonts.jetBrainsMono(color: numberColor)));
         } else if (m[4] != null) {
-          spans.add(TextSpan(text: m[4], style: TextStyle(color: commentColor, fontStyle: FontStyle.italic)));
+          spans.add(TextSpan(text: m[4], style: GoogleFonts.jetBrainsMono(color: commentColor, fontStyle: FontStyle.italic)));
         }
         return '';
       },
       onNonMatch: (String nonMatch) {
-        spans.add(TextSpan(text: nonMatch, style: TextStyle(color: defaultColor)));
+        spans.add(TextSpan(text: nonMatch, style: GoogleFonts.jetBrainsMono(color: defaultColor)));
         return '';
       },
     );

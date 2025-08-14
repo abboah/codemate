@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:multi_split_view/multi_split_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:codemate/components/ide/terminal_view.dart';
 
 class IdePage extends ConsumerStatefulWidget {
   final String projectId;
@@ -108,7 +109,31 @@ class _IdePageState extends ConsumerState<IdePage> {
   }
 
   void _openTerminalModal() {
-    // Placeholder
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Terminal',
+      barrierColor: Colors.black54,
+      pageBuilder: (ctx, a1, a2) {
+        return Stack(
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.black.withOpacity(0.2)),
+            ),
+            Center(child: TerminalView(projectId: widget.projectId)),
+          ],
+        );
+      },
+      transitionBuilder: (ctx, anim, sec, child) {
+        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        return Opacity(
+          opacity: curved.value,
+          child: Transform.scale(scale: 0.98 + 0.02 * curved.value, child: child),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 160),
+    );
   }
 
   @override

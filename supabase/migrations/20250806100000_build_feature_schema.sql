@@ -98,3 +98,34 @@ CREATE TABLE public.file_operations (
 COMMENT ON TABLE public.file_operations IS 'A log of every file modification performed by the agent.';
 
 -- End of migration script
+--
+
+-- Appendix: Terminal feature schema (sessions and command history)
+
+-- Terminal sessions: groups a sequence of terminal commands for a user within a project
+CREATE TABLE public.terminal_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name TEXT, -- optional session name
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE public.terminal_sessions IS 'Groups a sequence of terminal commands (a session) for a specific user and project.';
+
+-- Terminal command history: one row per executed command with resulting output
+CREATE TABLE public.terminal_commands (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES public.terminal_sessions(id) ON DELETE SET NULL,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  command TEXT NOT NULL,
+  output TEXT,
+  exit_code INTEGER, -- 0 for success, non-zero for failures
+  cwd TEXT DEFAULT '/', -- current working directory when the command was run
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE public.terminal_commands IS 'History of commands executed in the terminal, including outputs.';
+
+-- Helpful indexes to improve query performance
+CREATE INDEX IF NOT EXISTS idx_terminal_commands_project ON public.terminal_commands(project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_terminal_commands_session ON public.terminal_commands(session_id, created_at DESC);

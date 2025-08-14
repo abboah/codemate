@@ -4,6 +4,7 @@ import 'package:codemate/providers/project_files_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/providers/diff_overlay_provider.dart';
 
 class FileTreeView extends ConsumerStatefulWidget {
   final String projectId;
@@ -24,10 +25,33 @@ class _FileTreeViewState extends ConsumerState<FileTreeView> {
     super.dispose();
   }
 
+  void _ensureExpandedForActive(ProjectFile? activeFile) {
+    if (activeFile == null) return;
+    final path = activeFile.path;
+    final parts = path.split('/');
+    if (parts.length <= 1) return;
+    final ancestors = <String>[];
+    for (int i = 1; i < parts.length; i++) {
+      final dir = parts.sublist(0, i).join('/');
+      ancestors.add(dir);
+    }
+    bool changed = false;
+    for (final a in ancestors) {
+      if (!_expandedNodes.contains(a)) {
+        _expandedNodes.add(a);
+        changed = true;
+      }
+    }
+    if (changed && mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final projectFilesState = ref.watch(projectFilesProvider(widget.projectId));
     final activeFile = ref.watch(codeViewProvider).activeFile;
+
+    // Auto-expand to reveal active file
+    _ensureExpandedForActive(activeFile);
 
     return Column(
       children: [
@@ -71,10 +95,11 @@ class _FileTreeViewState extends ConsumerState<FileTreeView> {
               }
 
               final filtered = _filterFiles(projectFilesState.files, _query);
-              final fileTree = _buildFileTree(filtered, activeFile);
+              final root = _buildTree(filtered);
+              final widgets = _buildDirWidgets(root, activeFile, isRoot: true);
               return ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                children: fileTree,
+                children: widgets,
               );
             },
           ),
@@ -88,76 +113,88 @@ class _FileTreeViewState extends ConsumerState<FileTreeView> {
     return files.where((f) => f.path.toLowerCase().contains(query)).toList();
   }
 
-  List<Widget> _buildFileTree(List<ProjectFile> files, ProjectFile? activeFile) {
-    final Map<String, List<dynamic>> tree = {};
-
-    for (var file in files) {
-      List<String> parts = file.path.split('/');
-      Map<String, List<dynamic>> currentLevel = tree;
-      for (int i = 0; i < parts.length - 1; i++) {
-        String part = parts[i];
-        currentLevel.putIfAbsent(part, () => <dynamic>[]);
-        currentLevel = { for (var k in currentLevel.keys) k: currentLevel[k]! }; // This is a bit of a hack
-        var nextLevel = currentLevel[part];
-        if (nextLevel is List) {
-            // Find the map in the list or create it
-            var found = false;
-            for (var item in nextLevel) {
-                if (item is Map<String, List<dynamic>> && item.containsKey(part)) {
-                    currentLevel = item[part] as Map<String, List<dynamic>>;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                Map<String, List<dynamic>> newLevel = {};
-                nextLevel.add(newLevel);
-                currentLevel = newLevel;
-            }
-        }
-      }
-      final fileName = parts.last;
-      tree.putIfAbsent(parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '/', () => []);
-      (tree[parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '/'] as List).add(file);
-    }
-
-    // This is a simplified representation. A proper recursive function would be better.
-    // For now, we will stick to the flat structure as the logic for deep nesting is complex.
-    final Map<String, List<ProjectFile>> directoryMap = {};
-    for (var file in files) {
+  _DirNode _buildTree(List<ProjectFile> files) {
+    final _DirNode root = _DirNode(name: 'root', fullPath: '/');
+    for (final file in files) {
       final parts = file.path.split('/');
-      final directory = parts.length > 1 ? parts.sublist(0, parts.length - 1).join('/') : '/';
-      directoryMap.putIfAbsent(directory, () => []);
-      directoryMap[directory]!.add(file);
+      _DirNode current = root;
+      for (int i = 0; i < parts.length - 1; i++) {
+        final part = parts[i];
+        final nextPath = current.fullPath == '/' ? part : '${current.fullPath}/$part';
+        current = current.children.putIfAbsent(part, () => _DirNode(name: part, fullPath: nextPath));
+      }
+      current.files.add(file);
     }
-    final sortedDirectories = directoryMap.keys.toList()..sort();
-
-    return sortedDirectories.map((directory) {
-      final children = directoryMap[directory]!..sort((a, b) => a.path.compareTo(b.path));
-      final isExpanded = _expandedNodes.contains(directory);
-
-      return _FolderItem(
-        name: directory,
-        isExpanded: isExpanded,
-        onTap: () => setState(() {
-          if (isExpanded) {
-            _expandedNodes.remove(directory);
-          } else {
-            _expandedNodes.add(directory);
-          }
-        }),
-        children: isExpanded
-            ? children.map((file) {
-                return _FileItem(
-                  file: file,
-                  isActive: activeFile?.id == file.id,
-                  onTap: () => ref.read(codeViewProvider.notifier).openFile(file),
-                );
-              }).toList()
-            : [],
-      );
-    }).toList();
+    return root;
   }
+
+  List<Widget> _buildDirWidgets(_DirNode node, ProjectFile? activeFile, {bool isRoot = false, double indent = 0}) {
+    final List<Widget> widgets = [];
+
+    // For root, render only its top-level directories and files
+    final directories = node.children.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final files = node.files.toList()..sort((a, b) => a.path.toLowerCase().compareTo(b.path.toLowerCase()));
+
+    if (!isRoot) {
+      final isExpanded = _expandedNodes.contains(node.fullPath);
+      widgets.add(
+        _FolderItem(
+          name: node.name,
+          isExpanded: isExpanded,
+          onTap: () => setState(() {
+            if (isExpanded) {
+              _expandedNodes.remove(node.fullPath);
+            } else {
+              _expandedNodes.add(node.fullPath);
+            }
+          }),
+          children: isExpanded
+              ? [
+                  // Nested directories
+                  ...directories.expand((child) => _buildDirWidgets(child, activeFile, indent: indent + 16)),
+                  // Files directly under this directory
+                  ...files.map((file) => _FileItem(
+                        file: file,
+                        isActive: activeFile?.id == file.id,
+                        onTap: () {
+                          ref.read(diffOverlayProvider).clear();
+                          ref.read(codeViewProvider.notifier).openFile(file);
+                        },
+                      )),
+                ]
+              : [],
+          indent: indent,
+        ),
+      );
+    } else {
+      // Root level: render top-level directories and files
+      for (final dir in directories) {
+        widgets.addAll(_buildDirWidgets(dir, activeFile, indent: 0));
+      }
+      for (final file in files) {
+        widgets.add(_FileItem(
+          file: file,
+          isActive: activeFile?.id == file.id,
+          onTap: () {
+            ref.read(diffOverlayProvider).clear();
+            ref.read(codeViewProvider.notifier).openFile(file);
+          },
+        ));
+      }
+    }
+
+    return widgets;
+  }
+}
+
+class _DirNode {
+  final String name;
+  final String fullPath;
+  final Map<String, _DirNode> children = {};
+  final List<ProjectFile> files = [];
+
+  _DirNode({required this.name, required this.fullPath});
 }
 
 class _FolderItem extends StatelessWidget {
@@ -165,12 +202,14 @@ class _FolderItem extends StatelessWidget {
   final bool isExpanded;
   final VoidCallback onTap;
   final List<Widget> children;
+  final double indent;
 
   const _FolderItem({
     required this.name,
     required this.isExpanded,
     required this.onTap,
     required this.children,
+    this.indent = 0,
   });
 
   @override
@@ -182,7 +221,7 @@ class _FolderItem extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+            padding: EdgeInsets.only(left: indent + 8, right: 8, top: 6, bottom: 6),
             child: Row(
               children: [
                 Icon(
@@ -207,7 +246,7 @@ class _FolderItem extends StatelessWidget {
         ),
         if (isExpanded)
           Padding(
-            padding: const EdgeInsets.only(left: 16.0),
+            padding: EdgeInsets.only(left: indent + 16),
             child: Column(children: children),
           ),
       ],

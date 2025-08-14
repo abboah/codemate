@@ -19,7 +19,7 @@ This document details the implementation of a secure, simulated terminal within 
 We'll build a new widget that looks and feels like a terminal.
 
 *   **Create file:** `lib/components/ide/terminal_view.dart`
-    *   This widget will contain a scrollable list for command history and an input field for new commands.
+    *   This widget will contain a scrollable list for command history and an input field for new commands. clicking on the 'Terminal' button in the `ide_page.dart` 's should trigger this modal to popup, nicely designed with a modern feel and a blur backdrop.
     *   It will manage its own state, such as the current virtual working directory (e.g., `/`).
 
 **Step 1.2: Create the Terminal Handler Edge Function**
@@ -70,6 +70,8 @@ The Flutter `TerminalView` will call this function when the user enters a comman
 
 **Objective:** Build a dedicated AI function to act as a security gate, analyzing code for malicious patterns. This is a prerequisite for any code execution.
 
+We will use a very lightweight-but-reliable model for this, to reduce inference costs (`gemini-2.5-flash-lite`; use key `GEMINI_API_KEY_3`)
+
 **Step 2.1: Create the Code Reviewer Edge Function**
 This function's sole purpose is security analysis.
 
@@ -108,8 +110,11 @@ serve(async (req) => {
 });
 ```
 
+NOTE: The above function signature is outdated, use the modern gemini api standard you've used in other implementations. But the idea on the implementation has been made clear with the snippet above.
+
 **Step 2.3: Integrate the Reviewer**
 When the user modifies code in the `CodeEditorView`, a "review" button or an automatic on-save hook will call this function. The result will be displayed to the user (e.g., a small green checkmark or a red warning icon).
+However to minimize api usage, we don't run this anytime the user edits a file, but instead keep a check of the files that have been modified by the user, and then when they want to execute it, we 'review' the modified files.
 
 ---
 

@@ -4,48 +4,52 @@ This document outlines the recent achievements in the development of the "Build"
 
 ## ✅ Recent Achievements (IDE & Agent Implementation)
 
-We have successfully implemented the core IDE functionality and a foundational agent, transforming the build section into a powerful, interactive environment.
-
 1.  **Full IDE Layout & Functionality:**
-    -   **Hierarchical File Tree:** A `FileTreeView` now fetches and displays the project's file structure from the database, correctly handling nested files and folders.
-    -   **Integrated Code Editor:** The `flutter_code_editor` is now fully integrated. Clicking a file in the tree opens its content in the `CodeEditorView` with appropriate syntax highlighting for the file type.
-    -   **Dynamic & Stable Layout:** The IDE features a robust, three-pane layout (File Tree, Editor, Chat) using `multi_split_view`. The layout ratios are correctly configured, and minimum pane sizes prevent UI collapsing.
+    -   Hierarchical File Tree: Upgraded to a fully nested tree that supports deep folders with expand/collapse state.
+    -   Integrated Code Editor: `flutter_code_editor` with language-aware highlighting and safe autosave; fixed file switching artifacts using keyed controller rebind.
+    -   Diff-in-Editor View: Agent diff previews can be opened to show a full-height, scrollable diff overlay within the editor pane and hide the editor while visible.
 
 2.  **Advanced Agent Chat Interface:**
-    -   **Rich Markdown Formatting:** The agent's responses are now parsed and rendered as Markdown, with custom builders for syntax-highlighted code blocks (`CodeBlockBuilder`) and inline code snippets.
-    -   **Copy Functionality:** A "copy to clipboard" button is now present on the agent's messages for easy use of its output.
-    -   **Tool Feedback:** The UI now provides clear feedback when the agent is executing a tool, showing "in-progress" and "completed" states.
+    -   Rich Markdown Formatting with custom code and inline builders.
+    -   Copy-to-clipboard for last response.
+    -   Tool feedback states (in-progress, completed, errors).
+    -   File edits preview: Edits summary + per-file unified diff; clicking a diff opens the file and shows the diff overlay.
 
-3.  **Client-Side Function Calling:**
-    -   The agent can now request file operations (`create_file`, `update_file_content`, `delete_file`) by responding with a structured JSON payload.
-    -   The Flutter client correctly parses these requests and calls the appropriate methods on the `ProjectFilesProvider`.
-    -   The `FileTreeView` automatically refreshes upon completion of these operations, creating a seamless feedback loop.
+3.  **Attachments & Mentions:**
+    -   Attach Code: Plus menu with an Attach Code dialog (searchable multi-select) to add project files as context; pills render above input; previews (first 5 lines) in user bubbles; click-to-open in editor.
+    -   Inline Mentions: Type `@` to search and attach files inline; Enter to select top result; added to context automatically.
+    -   Schema: Messages persist `attached_files` JSONB.
 
-## 🚀 Next Steps: The Backend-Driven Agent & Terminal
+4.  **Agent vs Ask Modes:**
+    -   New pill switch for Agent/Ask with model toggle moved next to send.
+    -   Ask mode uses a new Edge Function `agent-chat-handler` (read-only, exposes only `read_file` tool). Uses `GEMINI_API_KEY_2` to reduce cost.
 
-With the client-side foundation complete, the next phase focuses on migrating logic to a secure backend and building out the terminal, as detailed in our new architecture plans.
+5.  **Terminal (V1) & Sessions:**
+    -   Terminal modal with glassy UI, prompt, command history, session drawer, and persistent history tables (`terminal_sessions`, `terminal_commands`).
+    -   Safe commands: `ls`, `cd`, `pwd`, `cat`, `mkdir`, `touch`, `rm` via `terminal-handler` Edge Function.
+    -   Path Suggestions: Typing `/` shows current dir contents; Tab to autocomplete, supports deeper navigation.
+    -   Subtle wallpaper behind the scroll area with "ROBIN" glyphs.
 
-### **Sprint 1: Implement Backend Function-Calling**
+## 🚀 Next Steps
 
-**Goal:** Refactor the agent's core logic to a secure Supabase Edge Function, moving away from the client-side implementation.
+### Sprint 2 (continued): AI Code Security Reviewer
+- Create `supabase/functions/code-reviewer/` (uses `GEMINI_API_KEY_3`, lightweight model) to analyze code snippets for potentially unsafe patterns.
+- Client integration points:
+  - Add a "Review" CTA in the editor header and a pre-run hook in terminal before introducing execution.
+  - Persist last review status per file (optional).
 
--   **Create the `agent-handler` Edge Function:** This TypeScript function will become the central orchestrator for all agent interactions.
--   **Define Formal Tool Declarations:** Implement the `create_file`, `update_file_content`, and `delete_file` tools using the official `@google/genai` SDK schema.
--   **Implement the Tool-Calling Loop:** The `agent-handler` will manage the conversation with Gemini, securely executing tool calls against the database when requested.
--   **Refactor Flutter Client:** The Flutter app will be updated to call this single `agent-handler` function instead of the Gemini API directly.
+### Sprint 3: Sandboxed Code Execution (Judge0)
+- Extend `terminal-handler` with `run <path>` to submit source to Judge0.
+- Create `submission-retriever` Edge Function to poll results.
+- UI: Show async status and print `stdout`/`stderr` into terminal history.
 
-### **Sprint 2: The Foundational Terminal & AI Security Gate (V1)**
+### Enhancements & Polish
+- Session naming/renaming from the drawer.
+- Persist expand state of the file tree.
+- More robust syntax highlighting for diffs and language-aware word diff.
+- Inline tokenized mentions (future) with atomic deletion.
 
-**Goal:** Build a "safe mode" terminal for file management and introduce an AI-powered security reviewer.
-
--   **Build the Terminal UI:** Create a `TerminalView` widget in Flutter that simulates a terminal interface.
--   **Create the `terminal-handler` Function:** This backend function will interpret and execute safe VFS commands like `ls`, `cat`, and `mkdir`.
--   **Develop the `code-reviewer` Function:** This critical security function will use Gemini to analyze code snippets for potential malicious patterns, acting as a prerequisite for any future code execution.
-
-### **Sprint 3: Sandboxed Code Execution (V2)**
-
-**Goal:** Integrate the Judge0 API to allow the agent and user to safely compile and run code.
-
--   **Integrate Judge0 API:** Enhance the `terminal-handler` to recognize a `run` command (e.g., `run main.py`).
--   **Implement the Execution Flow:** The handler will send the code to the Judge0 API for sandboxed execution.
--   **Handle Asynchronous Results:** The Flutter client will be updated to handle Judge0's asynchronous token-based system, polling for the result and displaying the `stdout` or `stderr` in the terminal.
+## Deployment Reminders
+- Ask handler secrets: `GEMINI_API_KEY_2`.
+- Reviewer secrets: `GEMINI_API_KEY_3` (upcoming).
+- Deploy: `supabase functions deploy agent-handler agent-chat-handler terminal-handler`.

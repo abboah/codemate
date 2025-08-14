@@ -76,6 +76,8 @@ class AgentChatNotifier extends ChangeNotifier {
     required String text,
     required String model,
     required String projectId,
+    List<Map<String, dynamic>> attachedFiles = const [],
+    bool useAskHandler = false,
   }) async {
     _isSending = true;
     notifyListeners();
@@ -88,6 +90,7 @@ class AgentChatNotifier extends ChangeNotifier {
       sender: MessageSender.user,
       messageType: AgentMessageType.text,
       content: text,
+      attachedFiles: attachedFiles,
       sentAt: DateTime.now(),
     );
 
@@ -114,14 +117,17 @@ class AgentChatNotifier extends ChangeNotifier {
               })
           .toList();
 
+      final functionName = useAskHandler ? 'agent-chat-handler' : 'agent-handler';
+
       // 2. Invoke the Supabase Edge Function
       final response = await _client.functions.invoke(
-        'agent-handler',
+        functionName,
         body: {
           'prompt': text,
           'history': historyForBackend,
           'projectId': projectId,
           'model': model,
+          'attachedFiles': attachedFiles,
         },
       );
 
@@ -133,31 +139,35 @@ class AgentChatNotifier extends ChangeNotifier {
       final aiResponseContent = result['text'] as String? ?? '';
       final List<dynamic> fileEdits = (result['fileEdits'] as List?) ?? [];
 
-      // 3. Illusion streaming: gradually append text to placeholder
+      // 3. Prepare the AI message for streaming and show tool results immediately
       final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
       if (index != -1) {
-        _messages[index] = aiPlaceholder.copyWith(content: '');
+        _messages[index] = aiPlaceholder.copyWith(
+          content: '',
+          messageType: AgentMessageType.text,
+          toolResults: { 'fileEdits': fileEdits },
+        );
         notifyListeners();
 
+        // 4. Illusion streaming: gradually append text to placeholder
         const chunkSize = 24;
         for (int i = 0; i < aiResponseContent.length; i += chunkSize) {
           final end = (i + chunkSize < aiResponseContent.length) ? i + chunkSize : aiResponseContent.length;
           final current = _messages[index].content + aiResponseContent.substring(i, end);
           _messages[index] = _messages[index].copyWith(
             content: current,
-            messageType: AgentMessageType.text,
           );
           notifyListeners();
           await Future.delayed(const Duration(milliseconds: 12));
         }
       }
 
-      // 4. Persist messages to the database once complete
+      // 5. Persist messages to the database once complete
       await _client.from('agent_chat_messages').insert(userMessage.toMap());
-      final aiWithToolResults = _messages[index].copyWith(toolResults: { 'fileEdits': fileEdits });
+      final aiWithToolResults = _messages[index];
       await _client.from('agent_chat_messages').insert(aiWithToolResults.toMap());
 
-      // 5. Refresh the file tree in case the agent modified files
+      // 6. Refresh the file tree in case the agent modified files
       _ref.read(projectFilesProvider(projectId).notifier).fetchFiles();
 
     } catch (e) {

@@ -9,6 +9,8 @@ class AgentChatMessage {
   final String content;
   final Map<String, dynamic>? toolCalls;
   final Map<String, dynamic>? toolResults;
+  final List<dynamic>? attachedFiles;
+  final String? feedback; // 'like' | 'dislike' | null
   final DateTime sentAt;
 
   AgentChatMessage({
@@ -19,6 +21,8 @@ class AgentChatMessage {
     required this.content,
     this.toolCalls,
     this.toolResults,
+    this.attachedFiles,
+    this.feedback,
     required this.sentAt,
   });
 
@@ -31,6 +35,8 @@ class AgentChatMessage {
       content: map['content'] ?? '',
       toolCalls: map['tool_calls'],
       toolResults: map['tool_results'],
+      attachedFiles: map['attached_files'],
+      feedback: map['feedback'],
       sentAt: DateTime.parse(map['sent_at']),
     );
   }
@@ -43,6 +49,8 @@ class AgentChatMessage {
     String? content,
     Map<String, dynamic>? toolCalls,
     Map<String, dynamic>? toolResults,
+    List<dynamic>? attachedFiles,
+    String? feedback,
     DateTime? sentAt,
   }) {
     return AgentChatMessage(
@@ -53,6 +61,8 @@ class AgentChatMessage {
       content: content ?? this.content,
       toolCalls: toolCalls ?? this.toolCalls,
       toolResults: toolResults ?? this.toolResults,
+      attachedFiles: attachedFiles ?? this.attachedFiles,
+      feedback: feedback ?? this.feedback,
       sentAt: sentAt ?? this.sentAt,
     );
   }
@@ -66,6 +76,8 @@ class AgentChatMessage {
       'content': content,
       'tool_calls': toolCalls,
       'tool_results': toolResults,
+      'attached_files': attachedFiles,
+      'feedback': feedback,
       'sent_at': sentAt.toIso8601String(),
     };
   }

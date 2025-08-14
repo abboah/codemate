@@ -10,6 +10,8 @@ import 'package:flutter_highlight/themes/vs2015.dart'; // A nice dark theme
 import 'package:google_fonts/google_fonts.dart';
 import 'package:highlight/highlight.dart';
 import 'package:highlight/languages/all.dart';
+import 'package:codemate/components/ide/diff_preview.dart';
+import 'package:codemate/providers/diff_overlay_provider.dart';
 
 class CodeEditorView extends ConsumerStatefulWidget {
   const CodeEditorView({super.key});
@@ -44,12 +46,15 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
     if (_boundFileId != file.id) {
       _controller!
         ..language = language
-        ..text = initialCode;
+        ..text = initialCode
+        ..selection = const TextSelection.collapsed(offset: 0);
       _boundFileId = file.id;
     } else {
       _controller!.language = language;
       if (_controller!.text != initialCode) {
-        _controller!.text = initialCode;
+        _controller!
+          ..text = initialCode
+          ..selection = const TextSelection.collapsed(offset: 0);
       }
     }
   }
@@ -117,6 +122,9 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
 
     _bindControllerToFile(activeFile, codeView.code);
 
+    final overlay = ref.watch(diffOverlayProvider);
+    final showOverlay = overlay.path == activeFile.path;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -150,21 +158,36 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
             ],
           ),
         ),
-        // Editor body
-        Expanded(
-          child: CodeTheme(
-            data: CodeThemeData(styles: vs2015Theme),
-            child: CodeField(
-              controller: _controller!,
-              expands: true,
-              textStyle: GoogleFonts.robotoMono(fontSize: 14, height: 1.5),
-              onChanged: (value) {
-                codeViewController.updateCode(value);
-                _scheduleAutosave(activeFile, value);
-              },
+        // Editor body or Diff overlay
+        if (showOverlay)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+              child: DiffPreview(
+                path: activeFile.path,
+                oldContent: overlay.oldContent,
+                newContent: overlay.newContent,
+                collapsible: false,
+                scrollable: true,
+              ),
+            ),
+          )
+        else
+          Expanded(
+            child: CodeTheme(
+              data: CodeThemeData(styles: vs2015Theme),
+              child: CodeField(
+                key: ValueKey(_boundFileId),
+                controller: _controller!,
+                expands: true,
+                textStyle: GoogleFonts.robotoMono(fontSize: 14, height: 1.5),
+                onChanged: (value) {
+                  codeViewController.updateCode(value);
+                  _scheduleAutosave(activeFile, value);
+                },
+              ),
             ),
           ),
-        ),
       ],
     );
   }
