@@ -15,7 +15,7 @@ The main screen will be a multi-pane layout.
 
 - **Left Pane (Resizable, initially 75%): The Editor & File Tree**
     - **File Tree Sidebar:** A collapsible sidebar on the far left, expanding on hover or click, displaying the project's file and folder structure.
-    - **Editor View:** The main area of the left pane will be powered by the **Monaco Editor**. It will support multiple tabs for open files.
+    - **Editor View:** The main area of the left pane will be powered by the **Flutter code Editor**. It will support multiple tabs for open files.
 - **Right Pane (Resizable, initially 25%): The Agent**
     - **Chat Interface:** A familiar chat UI for interacting with the AI agent. Messages from the agent that include tool calls or results will be visually distinct.
 - **Bottom Pane (Collapsible): The Terminal**

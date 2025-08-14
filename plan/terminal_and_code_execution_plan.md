@@ -81,7 +81,7 @@ The function will take code as input and use a specifically crafted prompt to as
 ```typescript
 // In supabase/functions/code-reviewer/index.ts
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { GoogleGenerativeAI } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 const securityPrompt = `
   You are a senior cybersecurity analyst. Your task is to analyze the following code snippet for any potential security risks or malicious intent.
@@ -96,8 +96,8 @@ const securityPrompt = `
 
 serve(async (req) => {
   const { code } = await req.json();
-  const gemini = new GoogleGenerativeAI(Deno.env.get("GEMINI_API_KEY")!);
-  const model = gemini.getGenerativeModel({ model: "gemini-1.5-flash-latest" });
+  const gemini = new GoogleGenAI(Deno.env.get("GEMINI_API_KEY")!);
+  const model = gemini.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const result = await model.generateContent([securityPrompt, code]);
   const jsonResponse = JSON.parse(result.response.text());

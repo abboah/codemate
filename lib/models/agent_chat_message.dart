@@ -56,4 +56,17 @@ class AgentChatMessage {
       sentAt: sentAt ?? this.sentAt,
     );
   }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'chat_id': chatId,
+      'sender': sender.name,
+      'message_type': messageType.name,
+      'content': content,
+      'tool_calls': toolCalls,
+      'tool_results': toolResults,
+      'sent_at': sentAt.toIso8601String(),
+    };
+  }
 }

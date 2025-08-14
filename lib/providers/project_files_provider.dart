@@ -64,7 +64,7 @@ class ProjectFilesProvider extends ChangeNotifier {
     try {
       await _client.from('project_files').update({
         'content': newContent,
-        'updated_at': DateTime.now().toIso8601String(),
+        'last_modified': DateTime.now().toIso8601String(),
       }).eq('id', fileId);
       await fetchFiles(); // Refresh the list
     } catch (e) {

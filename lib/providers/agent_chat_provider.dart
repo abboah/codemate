@@ -75,9 +75,12 @@ class AgentChatNotifier extends ChangeNotifier {
   Future<void> sendMessage({
     required String text,
     required String model,
+    required String projectId,
   }) async {
     _isSending = true;
     notifyListeners();
+
+    if (chatId.isEmpty) return;
 
     final userMessage = AgentChatMessage(
       id: _uuid.v4(),
@@ -87,13 +90,13 @@ class AgentChatNotifier extends ChangeNotifier {
       content: text,
       sentAt: DateTime.now(),
     );
-    
+
     final aiPlaceholder = AgentChatMessage(
       id: _uuid.v4(),
       chatId: chatId,
       sender: MessageSender.ai,
-      messageType: AgentMessageType.text,
-      content: '...',
+      messageType: AgentMessageType.toolInProgress,
+      content: 'Robin is thinking...',
       sentAt: DateTime.now(),
     );
 
@@ -101,116 +104,74 @@ class AgentChatNotifier extends ChangeNotifier {
     _messages.add(aiPlaceholder);
     notifyListeners();
 
-    String fullResponse = '';
-
     try {
-      final history = _messages.where((m) => m.id != userMessage.id && m.id != aiPlaceholder.id).map((m) {
-        final role = m.sender == MessageSender.user ? 'user' : 'model';
-        return gen_ai.Content(role, [gen_ai.TextPart(m.content)]);
-      }).toList();
+      // 1. Prepare history for the backend function
+      final historyForBackend = _messages
+          .where((m) => m.id != userMessage.id && m.id != aiPlaceholder.id && m.messageType == AgentMessageType.text)
+          .map((m) => {
+                "role": m.sender == MessageSender.user ? "user" : "model",
+                "parts": [{"text": m.content}]
+              })
+          .toList();
 
-      const systemInstruction =
-          'You are Robin, an expert AI software development assistant...';
+      // 2. Invoke the Supabase Edge Function
+      final response = await _client.functions.invoke(
+        'agent-handler',
+        body: {
+          'prompt': text,
+          'history': historyForBackend,
+          'projectId': projectId,
+          'model': model,
+        },
+      );
 
-      final stream = _chatService.sendMessage(text, history, systemInstruction, model: model);
+      if (response.status != 200) {
+        throw Exception('Backend function failed: ${response.data}');
+      }
 
-      await for (var chunk in stream) {
-        fullResponse += chunk;
-        final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
-        if(index != -1) {
-          _messages[index] = _messages[index].copyWith(content: fullResponse);
+      final Map<String, dynamic> result = response.data as Map<String, dynamic>;
+      final aiResponseContent = result['text'] as String? ?? '';
+      final List<dynamic> fileEdits = (result['fileEdits'] as List?) ?? [];
+
+      // 3. Illusion streaming: gradually append text to placeholder
+      final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
+      if (index != -1) {
+        _messages[index] = aiPlaceholder.copyWith(content: '');
+        notifyListeners();
+
+        const chunkSize = 24;
+        for (int i = 0; i < aiResponseContent.length; i += chunkSize) {
+          final end = (i + chunkSize < aiResponseContent.length) ? i + chunkSize : aiResponseContent.length;
+          final current = _messages[index].content + aiResponseContent.substring(i, end);
+          _messages[index] = _messages[index].copyWith(
+            content: current,
+            messageType: AgentMessageType.text,
+          );
           notifyListeners();
+          await Future.delayed(const Duration(milliseconds: 12));
         }
       }
 
-      // Save both messages after streaming is complete
-      await _client.from('agent_chat_messages').insert(
-        {
-          'id': userMessage.id,
-          'chat_id': userMessage.chatId,
-          'sender': 'user',
-          'message_type': 'text',
-          'content': userMessage.content,
-          'sent_at': userMessage.sentAt.toIso8601String(),
-        }
-      );
-      await _client.from('agent_chat_messages').insert(
-        {
-          'id': aiPlaceholder.id,
-          'chat_id': chatId,
-          'sender': 'ai',
-          'message_type': 'text',
-          'content': fullResponse,
-          'sent_at': aiPlaceholder.sentAt.toIso8601String(),
-        }
-      );
+      // 4. Persist messages to the database once complete
+      await _client.from('agent_chat_messages').insert(userMessage.toMap());
+      final aiWithToolResults = _messages[index].copyWith(toolResults: { 'fileEdits': fileEdits });
+      await _client.from('agent_chat_messages').insert(aiWithToolResults.toMap());
 
-      _handleToolCall(fullResponse);
+      // 5. Refresh the file tree in case the agent modified files
+      _ref.read(projectFilesProvider(projectId).notifier).fetchFiles();
 
     } catch (e) {
-       final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
+      final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
       if(index != -1) {
-        _messages[index] = _messages[index].copyWith(content: "Sorry, an error occurred: $e");
+        _messages[index] = _messages[index].copyWith(
+          content: "Sorry, an error occurred: $e",
+          messageType: AgentMessageType.error,
+        );
       }
       _error = "Failed to send message: $e";
     } finally {
       _isSending = false;
       notifyListeners();
-    }
-  }
-
-  void _handleToolCall(String response) async {
-    try {
-      final decodedResponse = jsonDecode(response);
-      if (decodedResponse is Map<String, dynamic> && decodedResponse.containsKey('tool_code')) {
-        final toolCode = decodedResponse['tool_code'];
-        final args = decodedResponse['args'] as Map<String, dynamic>;
-        final projectId = _ref.read(projectFilesProvider(chatId).notifier).projectId;
-        final filesNotifier = _ref.read(projectFilesProvider(projectId).notifier);
-
-        final toolMessage = AgentChatMessage(
-          id: _uuid.v4(),
-          chatId: chatId,
-          sender: MessageSender.ai,
-          messageType: AgentMessageType.toolInProgress,
-          content: 'Executing tool: $toolCode...',
-          sentAt: DateTime.now(),
-        );
-        _messages.add(toolMessage);
-        notifyListeners();
-
-        try {
-          switch (toolCode) {
-            case 'file_system.create_file':
-              await filesNotifier.createFile(args['path'], args['content']);
-              break;
-            case 'file_system.update_file':
-              await filesNotifier.updateFileContent(args['file_id'], args['content']);
-              break;
-            case 'file_system.delete_file':
-              await filesNotifier.deleteFile(args['file_id']);
-              break;
-          }
-          final index = _messages.indexWhere((m) => m.id == toolMessage.id);
-          if (index != -1) {
-            _messages[index] = toolMessage.copyWith(
-              messageType: AgentMessageType.toolResult,
-              content: 'Tool executed successfully.',
-            );
-          }
-        } catch (e) {
-          final index = _messages.indexWhere((m) => m.id == toolMessage.id);
-          if (index != -1) {
-            _messages[index] = toolMessage.copyWith(
-              messageType: AgentMessageType.error,
-              content: 'Error executing tool: $e',
-            );
-          }
-        }
-        notifyListeners();
-      }
-    } catch (e) {
-      // Not a tool call, ignore
     }
   }
 }
