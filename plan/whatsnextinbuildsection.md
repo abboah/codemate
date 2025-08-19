@@ -2,6 +2,24 @@
 
 This document outlines the recent achievements in the development of the "Build" section and the immediate plan for upcoming features.
 
+## ✨ Recent IDE/UI Accomplishments
+
+- Premium loaders across IDE and chat
+    - Replaced generic spinners with custom, accent-aware loaders:
+        - WaveLoader/MiniWave for compact inline loading and buttons.
+        - BigShimmer for large placeholders (editor/long lists/diff states).
+    - Improves perceived performance and visual consistency.
+- Centralized accent color and rollout
+    - Introduced `AppColors.accent` and applied it consistently across IDE: editor header CTAs, diff overlays, terminal prompt highlights, dialogs, and the chat send button.
+- Agent chat UX improvements
+    - Typing indicator for AI responses (bouncing/wave feel for parity with loaders).
+    - Thoughts accordion (collapsible), with streaming and persistence handled cleanly outside `tool_results`.
+    - Cleaner tool result rendering (file edits, reads, and search logs) with improved grouping and badges.
+- Learn/Build cohesion polish
+    - Updated shared visuals (shimmer/accent/badge styles) so the IDE and Learn areas feel part of the same design system.
+
+
+
 ## ✅ Recent Achievements (IDE & Agent Implementation)
 
 1.  **Full IDE Layout & Functionality:**
@@ -49,7 +67,9 @@ This document outlines the recent achievements in the development of the "Build"
 - More robust syntax highlighting for diffs and language-aware word diff.
 - Inline tokenized mentions (future) with atomic deletion.
 
+
 ## Deployment Reminders
+
 - Ask handler secrets: `GEMINI_API_KEY_2`.
 - Reviewer secrets: `GEMINI_API_KEY_3` (upcoming).
 - Deploy: `supabase functions deploy agent-handler agent-chat-handler terminal-handler`.

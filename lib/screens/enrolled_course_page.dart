@@ -1,6 +1,8 @@
 import 'package:codemate/providers/learn_provider.dart';
 import 'package:codemate/screens/learn_page.dart';
 import 'package:codemate/widgets/topic_interaction_modal.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -102,7 +104,21 @@ class EnrolledCoursePage extends ConsumerWidget {
     AsyncValue<List<UserTopicStatus>> topicStatusAsync,
   ) {
     return topicStatusAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => const Center(
+        child: SizedBox(
+          width: 220,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              BigShimmer(width: 200, height: 14),
+              SizedBox(height: 12),
+              BigShimmer(width: 160, height: 14),
+              SizedBox(height: 12),
+              BigShimmer(width: 180, height: 14),
+            ],
+          ),
+        ),
+      ),
       error: (err, stack) => Center(child: Text('Error: $err')),
       data: (statuses) {
         final totalTopics = statuses.length;
@@ -127,7 +143,7 @@ class EnrolledCoursePage extends ConsumerWidget {
                   return Container(
                     height: 350,
                     color: Colors.white10,
-                    child: const Icon(Icons.code, size: 60, color: Colors.blueAccent),
+                    child: Icon(Icons.code, size: 60, color: AppColors.accent),
                   );
                 },
               ),
@@ -149,12 +165,14 @@ class EnrolledCoursePage extends ConsumerWidget {
               style: GoogleFonts.poppins(color: Colors.white70),
             ),
             const SizedBox(height: 8),
-            LinearProgressIndicator(
-              value: progress / 100,
-              backgroundColor: Colors.white10,
-              valueColor: const AlwaysStoppedAnimation<Color>(Colors.blueAccent),
-              minHeight: 8,
+            ClipRRect(
               borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progress / 100,
+                backgroundColor: Colors.white10,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+                minHeight: 8,
+              ),
             ),
             const SizedBox(height: 40),
             // Delete Button
@@ -192,18 +210,33 @@ class EnrolledCoursePage extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
       ),
       child: topicsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const Center(
+          child: SizedBox(
+            width: 260,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                BigShimmer(width: 240, height: 14),
+                SizedBox(height: 12),
+                BigShimmer(width: 220, height: 14),
+                SizedBox(height: 12),
+                BigShimmer(width: 200, height: 14),
+              ],
+            ),
+          ),
+        ),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (topics) {
           return topicStatusAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => const Center(child: MiniWave(size: 28)),
             error: (err, stack) => Center(child: Text('Error: $err')),
             data: (statuses) {
               final statusMap = {for (var s in statuses) s.topicId: s.status};
-              return ListView.builder(
+              return ListView.separated(
                 shrinkWrap: true,
                 physics: const ClampingScrollPhysics(),
                 itemCount: topics.length,
+                separatorBuilder: (context, index) => const SizedBox(height: 6),
                 itemBuilder: (context, index) {
                   final topic = topics[index];
                   final status = statusMap[topic.id] ?? 'not_started';
@@ -256,7 +289,7 @@ class _TopicTile extends StatelessWidget {
         break;
       case 'in_progress':
         statusIcon = Icons.timelapse;
-        statusColor = Colors.blueAccent;
+        statusColor = AppColors.accent;
         break;
       default:
         statusIcon = Icons.circle_outlined;
@@ -278,7 +311,7 @@ class _TopicTile extends StatelessWidget {
           children: [
             Icon(
               isProject ? Icons.assignment_turned_in_outlined : Icons.menu_book_outlined,
-              color: isProject ? Colors.amber : Colors.blueAccent,
+              color: isProject ? Colors.amber : AppColors.accent,
               size: 28,
             ),
             const SizedBox(width: 16),
@@ -305,7 +338,26 @@ class _TopicTile extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 16),
-            Icon(statusIcon, color: statusColor),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: statusColor.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(statusIcon, color: statusColor, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    status == 'completed'
+                        ? 'Completed'
+                        : (status == 'in_progress' ? 'In progress' : 'Not started'),
+                    style: GoogleFonts.poppins(color: statusColor, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

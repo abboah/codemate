@@ -1,6 +1,8 @@
 import 'package:codemate/providers/learn_provider.dart';
 import 'package:codemate/widgets/quiz_view.dart';
 import 'package:codemate/widgets/two_column_layout.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -95,7 +97,21 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
               future: _attemptsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const Center(
+                    child: SizedBox(
+                      width: 240,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          BigShimmer(width: 220, height: 14),
+                          SizedBox(height: 12),
+                          BigShimmer(width: 200, height: 14),
+                          SizedBox(height: 12),
+                          BigShimmer(width: 180, height: 14),
+                        ],
+                      ),
+                    ),
+                  );
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text('Error: ${snapshot.error}'));
@@ -139,7 +155,7 @@ class QuizAttemptCard extends ConsumerWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.only(bottom: 16),
       child: ListTile(
-        leading: const Icon(Icons.quiz_outlined, color: Colors.blueAccent),
+        leading: Icon(Icons.quiz_outlined, color: AppColors.accent),
         title: Text(
           'Quiz Attempt',
           style: GoogleFonts.poppins(

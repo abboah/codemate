@@ -84,5 +84,22 @@ export const readFileTool: FunctionDeclaration = {
   },
 };
 
+/**
+ * Search across the entire project codebase for a query string.
+ * Returns a list of files with matched lines and line numbers.
+ */
+export const searchTool: FunctionDeclaration = {
+  name: "search",
+  description: "Search the project files for lines containing a query (case-insensitive). Returns files and matching line numbers.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: "The substring or simple pattern to search for (no regex)." },
+      max_results_per_file: { type: Type.NUMBER, description: "Optional cap for matches per file (default 20)." },
+    },
+    required: ["query"],
+  },
+};
+
 // Master list of all available tools for the agent
-export const availableTools = [createFileTool, updateFileTool, deleteFileTool, readFileTool];
+export const availableTools = [createFileTool, updateFileTool, deleteFileTool, readFileTool, searchTool];

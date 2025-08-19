@@ -20,6 +20,11 @@ import 'package:codemate/components/ide/edit_summary.dart';
 import 'package:codemate/providers/code_view_provider.dart';
 import 'package:codemate/components/ide/attach_code_dialog.dart';
 import 'package:codemate/providers/diff_overlay_provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:codemate/supabase_config.dart';
+import 'package:codemate/utils/ndjson_stream.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class AgentChatView extends ConsumerStatefulWidget {
   final String projectId;
@@ -90,6 +95,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
             projectId: widget.projectId,
             attachedFiles: attachmentsToSend,
             useAskHandler: _askMode,
+            stream: true,
           );
     }
   }
@@ -103,56 +109,150 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     });
 
     try {
-      final response = await Supabase.instance.client.functions.invoke(
-        _askMode ? 'agent-chat-handler' : 'agent-handler',
-        body: {'prompt': text, 'history': [], 'projectId': widget.projectId, 'model': _selectedModel, 'attachedFiles': attachments},
-      );
+  final client = Supabase.instance.client;
+  final functionsHost = getFunctionsOrigin();
+      final functionName = _askMode ? 'agent-chat-handler' : 'agent-handler';
+      final url = Uri.parse("$functionsHost/$functionName");
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/x-ndjson',
+        'Authorization': client.auth.currentSession?.accessToken != null
+            ? 'Bearer ${client.auth.currentSession!.accessToken}'
+            : '',
+        'x-client-info': 'supabase-dart',
+      };
+      final body = jsonEncode({
+        'prompt': text,
+        'history': [],
+        'projectId': widget.projectId,
+        'model': _selectedModel,
+  'attachedFiles': attachments,
+  'includeThoughts': true,
+      });
 
-      if (response.status != 200) throw Exception('Backend function failed: ${response.data}');
+  final ndjson = NdjsonClient(url: url, headers: headers, body: body);
 
-      final result = response.data as Map<String, dynamic>;
-      final aiResponseContent = result['text'] as String? ?? '';
-      final fileEdits = (result['fileEdits'] as List<dynamic>?) ?? [];
+  final fileEdits = <dynamic>[];
+  final filesRead = <Map<String, dynamic>>[];
+  final filesSearched = <Map<String, dynamic>>[];
+  String thoughts = '';
+      int aiIndex = 1;
+      // Switch placeholder to text mode for live deltas
+      setState(() {
+        _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+          content: '',
+          messageType: AgentMessageType.text,
+          toolResults: { 'fileEdits': fileEdits },
+        );
+      });
 
-      final chatService = ref.read(chatServiceProvider);
-      final title = await chatService.generateChatTitle(text, aiResponseContent);
-
-      final chatResponse = await Supabase.instance.client.from('agent_chats').insert({
-        'project_id': widget.projectId,
-        'user_id': Supabase.instance.client.auth.currentUser!.id,
-        'title': title
-      }).select('id').single();
-
-      final newChatId = chatResponse['id'];
-
-      final aiMessage = AgentChatMessage(
-        id: const Uuid().v4(),
-        chatId: newChatId,
-        sender: MessageSender.ai,
-        messageType: AgentMessageType.text,
-        content: '',
-        toolResults: {'fileEdits': fileEdits},
-        sentAt: DateTime.now(),
-      );
-
-      setState(() => _localMessages[1] = aiMessage);
-
-      const chunkSize = 24;
-      for (int i = 0; i < aiResponseContent.length; i += chunkSize) {
-        final end = (i + chunkSize < aiResponseContent.length) ? i + chunkSize : aiResponseContent.length;
-        setState(() {
-          _localMessages[1] = _localMessages[1].copyWith(
-            content: _localMessages[1].content + aiResponseContent.substring(i, end),
-          );
-        });
-        await Future.delayed(const Duration(milliseconds: 12));
+  String finalText = '';
+  bool thoughtsExpandedDuringStream = false;
+      await for (final evt in ndjson.stream()) {
+        switch (evt['type']) {
+          case 'ping':
+            break;
+          case 'thought':
+            final delta = evt['delta'] as String? ?? '';
+            thoughts += delta;
+            setState(() {
+              final tr = Map<String, dynamic>.from(_localMessages[aiIndex].toolResults ?? {'fileEdits': fileEdits});
+              final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
+              ui['expandThoughts'] = true;
+              tr['ui'] = ui;
+              final cur = (_localMessages[aiIndex].thoughts ?? '') + delta;
+              _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr, thoughts: cur);
+            });
+            thoughtsExpandedDuringStream = true;
+            break;
+          case 'text':
+            final delta = evt['delta'] as String? ?? '';
+            finalText += delta;
+            setState(() {
+              final current = _localMessages[aiIndex].content + delta;
+              _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(content: current);
+            });
+            break;
+          case 'file_edit':
+            setState(() {
+              fileEdits.add(evt);
+              _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                toolResults: { 'fileEdits': List<dynamic>.from(fileEdits) },
+              );
+            });
+            break;
+          case 'tool_result': {
+            final name = evt['name'] as String?;
+            final result = evt['result'];
+            if (name == 'read_file' && result is Map && (result['status'] == 'success')) {
+              setState(() {
+                filesRead.add({'path': result['path'], 'lines': result['lines']});
+                final tr = Map<String, dynamic>.from(_localMessages[aiIndex].toolResults ?? {'fileEdits': fileEdits});
+                tr['filesRead'] = List<Map<String, dynamic>>.from(filesRead);
+                _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+              });
+            } else if (name == 'search' && result is Map && (result['status'] == 'success')) {
+              setState(() {
+                filesSearched.add({'query': result['query'], 'results': result['results']});
+                final tr = Map<String, dynamic>.from(_localMessages[aiIndex].toolResults ?? {'fileEdits': fileEdits});
+                tr['filesSearched'] = List<Map<String, dynamic>>.from(filesSearched);
+                _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+              });
+            }
+            break;
+          }
+          case 'error':
+            setState(() {
+              _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                messageType: AgentMessageType.error,
+                content: 'Sorry, an error occurred: ${evt['message']}',
+              );
+            });
+            break;
+          case 'end':
+      if (evt['fileEdits'] is List) {
+              setState(() {
+                fileEdits
+                  ..clear()
+                  ..addAll(evt['fileEdits'] as List);
+        final tr = Map<String, dynamic>.from(_localMessages[aiIndex].toolResults ?? {});
+        tr['fileEdits'] = List<dynamic>.from(fileEdits);
+        final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
+        ui['expandThoughts'] = false;
+        tr['ui'] = ui;
+        _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+              });
+            }
+            // Collapse thoughts after stream ends; UI accordion defaults collapsed unless user expands later
+            break;
+        }
       }
 
-      // Ensure correct ordering by explicit sent_at values
-      final sentAtUser = DateTime.now();
-      final sentAtAi = sentAtUser.add(const Duration(milliseconds: 10)); // Add 10ms
+      // Generate title from final streamed text and create chat
+      final chatService = ref.read(chatServiceProvider);
+      final title = await chatService.generateChatTitle(text, finalText);
 
-      await Supabase.instance.client.from('agent_chat_messages').insert([
+      final chatResponse = await client
+          .from('agent_chats')
+          .insert({
+            'project_id': widget.projectId,
+            'user_id': client.auth.currentUser!.id,
+            'title': title
+          })
+          .select('id')
+          .single();
+      final newChatId = chatResponse['id'] as String;
+
+      // Persist both messages with explicit sent_at ordering
+      final sentAtUser = DateTime.now();
+      final sentAtAi = sentAtUser.add(const Duration(milliseconds: 10));
+
+      // Sanitize tool_results (strip 'ui') before insert
+      final sanitizedToolResults = () {
+        final tr = {'fileEdits': fileEdits};
+        return tr; // no 'ui' here by design
+      }();
+      await client.from('agent_chat_messages').insert([
         {
           'chat_id': newChatId,
           'sender': 'user',
@@ -166,11 +266,13 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           'sender': 'ai',
           'message_type': 'text',
           'content': _localMessages[1].content,
-          'tool_results': {'fileEdits': fileEdits},
+          'thoughts': thoughts.isNotEmpty ? thoughts : null,
+          'tool_results': sanitizedToolResults,
           'sent_at': sentAtAi.toIso8601String(),
         },
       ]);
 
+      // Refresh explorer and chats list
       ref.read(projectFilesProvider(widget.projectId).notifier).fetchFiles();
       ref.invalidate(projectChatsProvider(widget.projectId));
 
@@ -181,10 +283,12 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       });
     } catch (e) {
       setState(() {
-        _localMessages[1] = _localMessages[1].copyWith(
-          content: "Sorry, an error occurred: $e",
-          messageType: AgentMessageType.error,
-        );
+        if (_localMessages.length > 1) {
+          _localMessages[1] = _localMessages[1].copyWith(
+            content: "Sorry, an error occurred: $e",
+            messageType: AgentMessageType.error,
+          );
+        }
         _isSendingNewChat = false;
       });
     }
@@ -277,7 +381,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   builder: (context, ref, child) {
                     final chatState = ref.watch(agentChatProvider(_activeChatId!));
                     if (chatState.isLoading && chatState.messages.isEmpty) {
-                      return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
+                      return const Center(child: WaveLoader(size: 28));
                     }
                     return ListView.builder(
                       padding: const EdgeInsets.all(16.0),
@@ -362,7 +466,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                       ))
                   .toList(),
             ),
-            loading: () => const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+            loading: () => const SizedBox(width: 24, height: 24, child: MiniWave(size: 24)),
             error: (err, stack) => const Icon(Icons.error, color: Colors.redAccent),
           ),
         ],
@@ -400,7 +504,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_awesome, color: Colors.blueAccent.withOpacity(0.8), size: 48),
+          Icon(Icons.auto_awesome, color: AppColors.accent.withOpacity(0.8), size: 48),
           const SizedBox(height: 24),
           Text(
             'Start building with Robin',
@@ -638,12 +742,12 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                         _buildModelToggle(),
                     IconButton(
                       style: IconButton.styleFrom(
-                        backgroundColor: Colors.blueAccent,
+                        backgroundColor: AppColors.accent,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
-                      icon: isSending
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.arrow_upward, color: Colors.white),
+            icon: isSending
+              ? const SizedBox(width: 20, height: 20, child: MiniWave(size: 20))
+              : const Icon(Icons.arrow_upward, color: Colors.white),
                       onPressed: isSending ? null : _sendMessage,
                         ),
                       ],
@@ -735,9 +839,14 @@ class AgentMessageBubble extends ConsumerWidget {
       return _buildToolMessage(message);
     }
 
-    final List<dynamic> edits = (message.toolResults != null && message.toolResults is Map && (message.toolResults as Map)["fileEdits"] is List)
+  final Map<String, dynamic> toolResultsMap = (message.toolResults is Map) ? Map<String, dynamic>.from(message.toolResults as Map) : <String, dynamic>{};
+  final String thoughts = message.thoughts ?? '';
+  final bool expandThoughts = ((toolResultsMap['ui'] as Map?)?['expandThoughts'] as bool?) ?? false;
+  final List<dynamic> edits = (message.toolResults != null && message.toolResults is Map && (message.toolResults as Map)["fileEdits"] is List)
         ? List<dynamic>.from((message.toolResults as Map)["fileEdits"] as List)
         : [];
+  final List<dynamic> filesRead = (toolResultsMap['filesRead'] is List) ? List<dynamic>.from(toolResultsMap['filesRead'] as List) : const [];
+  final List<dynamic> filesSearched = (toolResultsMap['filesSearched'] is List) ? List<dynamic>.from(toolResultsMap['filesSearched'] as List) : const [];
 
     final List<dynamic> attached = message.attachedFiles is List ? List<dynamic>.from(message.attachedFiles as List) : [];
 
@@ -749,7 +858,7 @@ class AgentMessageBubble extends ConsumerWidget {
           Container(
             constraints: const BoxConstraints(maxWidth: 720),
             decoration: BoxDecoration(
-              color: isUser ? Colors.blueAccent : Colors.transparent,
+              color: isUser ? AppColors.darkerAccent : Colors.transparent,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(18),
                 topRight: const Radius.circular(18),
@@ -763,6 +872,10 @@ class AgentMessageBubble extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (!isUser && thoughts.isNotEmpty) ...[
+                  _ThoughtsAccordion(thoughts: thoughts, expandInitially: expandThoughts),
+                  const SizedBox(height: 12),
+                ],
                 if (edits.isNotEmpty && !isUser) ...[
                   EditsSummary(fileEdits: edits),
                   const SizedBox(height: 8),
@@ -792,6 +905,35 @@ class AgentMessageBubble extends ConsumerWidget {
                   }),
                   const SizedBox(height: 12),
                   const Divider(color: Colors.white24, height: 1),
+                  const SizedBox(height: 12),
+                ],
+                if (!isUser && filesRead.isNotEmpty) ...[
+                  ...filesRead.map((r) {
+                    final path = r['path'] as String? ?? 'unknown';
+                    final lines = r['lines']?.toString() ?? '-';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.menu_book_outlined, size: 14, color: Colors.white70),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text('Read $path ($lines lines)', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                  const Divider(color: Colors.white24, height: 1),
+                  const SizedBox(height: 12),
+                ],
+                if (!isUser && filesSearched.isNotEmpty) ...[
+                  ...filesSearched.map((s) {
+                    final query = s['query'] as String? ?? '';
+                    final List<dynamic> results = (s['results'] is List) ? List<dynamic>.from(s['results'] as List) : [];
+                    return _SearchResultsAccordion(query: query, results: results);
+                  }),
                   const SizedBox(height: 12),
                 ],
                 if (isUser && attached.isNotEmpty) ...[
@@ -853,29 +995,32 @@ class AgentMessageBubble extends ConsumerWidget {
                   const Divider(color: Colors.white24, height: 1),
                   const SizedBox(height: 12),
                 ],
-                MarkdownBody(
-                  data: message.content,
-                  selectable: true,
-                  builders: {
-                    'pre': CodeBlockBuilder(),
-                    'code': InlineCodeBuilder(),
-                  },
-                  styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                    p: GoogleFonts.poppins(color: Colors.white, fontSize: 15, height: 1.6),
-                    h1: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
-                    h2: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
-                    h3: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
-                    code: GoogleFonts.robotoMono(
-                      backgroundColor: Colors.black.withOpacity(0.3),
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 14,
-                    ),
-                    blockquoteDecoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.2),
-                      border: Border(left: BorderSide(color: Colors.white.withOpacity(0.2), width: 4)),
+                if (!isUser && isLastMessage && (message.content.isEmpty))
+                  const _TypingDots()
+                else
+                  MarkdownBody(
+                    data: message.content,
+                    selectable: true,
+                    builders: {
+                      'pre': CodeBlockBuilder(),
+                      'code': InlineCodeBuilder(),
+                    },
+                    styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                      p: GoogleFonts.poppins(color: Colors.white, fontSize: 15, height: 1.6),
+                      h1: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
+                      h2: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
+                      h3: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
+                      code: GoogleFonts.robotoMono(
+                        backgroundColor: Colors.black.withOpacity(0.3),
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 14,
+                      ),
+                      blockquoteDecoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.2),
+                        border: Border(left: BorderSide(color: Colors.white.withOpacity(0.2), width: 4)),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -886,17 +1031,17 @@ class AgentMessageBubble extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
-                    tooltip: 'Copy Message',
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: message.content));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Copied to clipboard!'),
-                          backgroundColor: Colors.blueAccent,
-                        ),
-                      );
-                    },
+                icon: const Icon(Icons.copy, color: Colors.white54, size: 18),
+                tooltip: 'Copy Message',
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: message.content));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Copied to clipboard!'),
+                      backgroundColor: AppColors.darkerAccent,
+                    ),
+                  );
+                },
                   ),
                   const SizedBox(width: 4),
                   _FeedbackButton(
@@ -955,7 +1100,7 @@ class AgentMessageBubble extends ConsumerWidget {
     switch (message.messageType) {
       case AgentMessageType.toolInProgress:
         text = message.content;
-        icon = const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70));
+  icon = const SizedBox(width: 16, height: 16, child: MiniWave(size: 16));
         break;
       case AgentMessageType.toolResult:
         text = 'Tool execution finished.';
@@ -1007,7 +1152,7 @@ class _ModePill extends StatelessWidget {
         margin: const EdgeInsets.all(4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: selected ? Colors.blueAccent : Colors.transparent,
+          color: selected ? AppColors.accent : Colors.transparent,
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
@@ -1042,8 +1187,202 @@ class _FeedbackButton extends StatelessWidget {
           color: selected ? Colors.white.withOpacity(0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Icon(icon, size: 18, color: selected ? Colors.blueAccent : Colors.white54),
+  child: Icon(icon, size: 18, color: selected ? AppColors.accent : Colors.white54),
       ),
+    );
+  }
+}
+
+class _ThoughtsAccordion extends StatefulWidget {
+  final String thoughts;
+  final bool expandInitially;
+  final VoidCallback? onCollapsed;
+  const _ThoughtsAccordion({required this.thoughts, this.expandInitially = false, this.onCollapsed});
+
+  @override
+  State<_ThoughtsAccordion> createState() => _ThoughtsAccordionState();
+}
+
+class _ThoughtsAccordionState extends State<_ThoughtsAccordion> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.expandInitially;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() {
+              _expanded = !_expanded;
+              if (!_expanded && widget.onCollapsed != null) widget.onCollapsed!();
+            }),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+              child: Row(
+                children: [
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: Colors.white70),
+                  const SizedBox(width: 8),
+                  Text('Thoughts', style: GoogleFonts.poppins(color: Colors.white70, fontWeight: FontWeight.w600)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppColors.darkerAccent.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: AppColors.darkerAccent.withOpacity(0.4)),
+                    ),
+                    child: Text('hidden', style: GoogleFonts.poppins(color: AppColors.darkerAccent, fontSize: 11)),
+                  ),
+                  const Spacer(),
+                  if (!_expanded)
+                    Text('tap to view', style: GoogleFonts.poppins(color: Colors.white38, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Container(
+              constraints: const BoxConstraints(maxHeight: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: SingleChildScrollView(
+                  child: MarkdownBody(
+                    data: widget.thoughts,
+                    styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                      p: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 13, height: 1.5),
+                      code: GoogleFonts.robotoMono(
+                        backgroundColor: Colors.black.withOpacity(0.3),
+                        color: Colors.white.withOpacity(0.9),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 200),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SearchResultsAccordion extends StatefulWidget {
+  final String query;
+  final List<dynamic> results; // [{ path, matches:[{line,text}] }]
+  const _SearchResultsAccordion({required this.query, required this.results});
+
+  @override
+  State<_SearchResultsAccordion> createState() => _SearchResultsAccordionState();
+}
+
+class _SearchResultsAccordionState extends State<_SearchResultsAccordion> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final totalMatches = widget.results.fold<int>(0, (sum, r) => sum + ((r['matches'] as List?)?.length ?? 0));
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
+              child: Row(
+                children: [
+                  Icon(_expanded ? Icons.expand_less : Icons.search, size: 18, color: Colors.white70),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Searched for "${widget.query}" in codebase — $totalMatches match(es)',
+                        style: GoogleFonts.poppins(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+              child: Scrollbar(
+                thumbVisibility: true,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: widget.results.length,
+                  itemBuilder: (context, idx) {
+                    final r = widget.results[idx] as Map<String, dynamic>;
+                    final path = r['path'] as String? ?? 'unknown';
+                    final matches = (r['matches'] as List?) ?? const [];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.description_outlined, size: 14, color: Colors.white70),
+                              const SizedBox(width: 6),
+                              Expanded(child: Text(path, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12))),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          ...matches.map((m) {
+                            final line = (m as Map<String, dynamic>)['line'];
+                            final text = m['text'];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: Colors.white.withOpacity(0.15)),
+                              ),
+                              child: Text('L$line  $text', style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12)),
+                            );
+                          }),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypingDots extends StatelessWidget {
+  const _TypingDots();
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 2),
+      child: WaveLoader(size: 36, color: Colors.white70),
     );
   }
 }

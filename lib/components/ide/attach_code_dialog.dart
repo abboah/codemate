@@ -2,6 +2,8 @@ import 'package:codemate/providers/project_files_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class AttachCodeDialog extends ConsumerStatefulWidget {
   final String projectId;
@@ -72,7 +74,7 @@ class _AttachCodeDialogState extends ConsumerState<AttachCodeDialog> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: Colors.blueAccent),
+                  borderSide: BorderSide(color: AppColors.accent),
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               ),
@@ -86,8 +88,8 @@ class _AttachCodeDialogState extends ConsumerState<AttachCodeDialog> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
-              child: filesState.isLoading
-                  ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent)))
+        child: filesState.isLoading
+          ? const Center(child: Padding(padding: EdgeInsets.all(16), child: WaveLoader(size: 28)))
                   : ListView.builder(
                       shrinkWrap: true,
                       itemCount: files.length,
@@ -106,7 +108,7 @@ class _AttachCodeDialogState extends ConsumerState<AttachCodeDialog> {
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             child: Row(
                               children: [
-                                Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? Colors.blueAccent : Colors.white38, size: 18),
+                                Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? AppColors.accent : Colors.white38, size: 18),
                                 const SizedBox(width: 10),
                                 const Icon(Icons.description_outlined, color: Colors.white70, size: 16),
                                 const SizedBox(width: 8),
@@ -135,7 +137,7 @@ class _AttachCodeDialogState extends ConsumerState<AttachCodeDialog> {
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.attach_file, size: 16),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
                   onPressed: _selectedPaths.isEmpty
                       ? null
                       : () {

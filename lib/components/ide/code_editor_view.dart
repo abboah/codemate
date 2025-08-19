@@ -12,6 +12,8 @@ import 'package:highlight/highlight.dart';
 import 'package:highlight/languages/all.dart';
 import 'package:codemate/components/ide/diff_preview.dart';
 import 'package:codemate/providers/diff_overlay_provider.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class CodeEditorView extends ConsumerStatefulWidget {
   const CodeEditorView({super.key});
@@ -146,7 +148,7 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
               ),
               if (_saving) ...[
                 const SizedBox(width: 8),
-                const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70)),
+                const SizedBox(width: 14, height: 14, child: MiniWave(size: 14)),
                 const SizedBox(width: 6),
                 Text('Saving…', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
               ] else if (_lastSavedAt != null) ...[

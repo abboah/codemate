@@ -11,6 +11,7 @@ import 'package:codemate/screens/learn_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/themes/colors.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final UserProfile profile;
@@ -117,7 +118,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           shape: BoxShape.circle,
           gradient: RadialGradient(
             colors: [
-              Colors.blueAccent.withOpacity(0.3),
+              AppColors.accent.withOpacity(0.3),
               Colors.black.withOpacity(0.0),
             ],
           ),
@@ -279,9 +280,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     right: -5,
                     child: Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.blueAccent,
+                        color: AppColors.accent,
                       ),
                       child: Text(
                         badgeCount.toString(),

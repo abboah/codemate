@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class TerminalView extends ConsumerStatefulWidget {
   final String projectId;
@@ -369,10 +371,10 @@ class _TerminalViewState extends ConsumerState<TerminalView> {
                             final l = _lines[i];
                             if (l.prefix == '\u0000') return const SizedBox(height: 4);
                             return RichText(
-                              text: TextSpan(
+                text: TextSpan(
                                 style: GoogleFonts.robotoMono(color: Colors.white.withOpacity(0.9), fontSize: 13, height: 1.6),
                                 children: [
-                                  if (l.prefix.isNotEmpty) TextSpan(text: '${l.prefix} ', style: const TextStyle(color: Colors.blueAccent)),
+                  if (l.prefix.isNotEmpty) TextSpan(text: '${l.prefix} ', style: TextStyle(color: AppColors.accent)),
                                   TextSpan(text: l.text),
                                 ],
                               ),
@@ -391,7 +393,7 @@ class _TerminalViewState extends ConsumerState<TerminalView> {
                     ),
                     child: Row(
                       children: [
-                        Text(_prompt(), style: GoogleFonts.robotoMono(color: Colors.blueAccent)),
+                        Text(_prompt(), style: GoogleFonts.robotoMono(color: AppColors.accent)),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Shortcuts(
@@ -422,7 +424,7 @@ class _TerminalViewState extends ConsumerState<TerminalView> {
                           ),
                         ),
                         IconButton(
-                          icon: _busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.arrow_forward, color: Colors.white70),
+                          icon: _busy ? const SizedBox(width: 16, height: 16, child: MiniWave(size: 16)) : const Icon(Icons.arrow_forward, color: Colors.white70),
                           onPressed: _busy ? null : () {
                             final cmd = _input.text.trim();
                             _input.clear();
@@ -482,7 +484,7 @@ class _TerminalViewState extends ConsumerState<TerminalView> {
                             await _ensureSession();
                             setState(() => _showHistory = false);
                           },
-                          style: FilledButton.styleFrom(backgroundColor: Colors.blueAccent),
+                          style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
                           child: const Text('New session'),
                         ),
                       )

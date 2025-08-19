@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class TwoColumnLayout extends StatelessWidget {
   final String pageTitle;
@@ -8,6 +10,7 @@ class TwoColumnLayout extends StatelessWidget {
   final VoidCallback? onButtonPressed;
   final Widget rightColumnContent;
   final bool isLoading;
+  final Future<void> Function(BuildContext)? onBack;
 
   const TwoColumnLayout({
     super.key,
@@ -17,6 +20,7 @@ class TwoColumnLayout extends StatelessWidget {
     required this.onButtonPressed,
     required this.rightColumnContent,
     this.isLoading = false,
+    this.onBack,
   });
 
   @override
@@ -71,6 +75,7 @@ class TwoColumnLayout extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.05),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.08)),
                       ),
                       child: rightColumnContent,
                     ),
@@ -92,33 +97,30 @@ class TwoColumnLayout extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.3),
-            width: 2,
+          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.6),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withOpacity(0.03),
+              Colors.white.withOpacity(0.01),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
         ),
         child: Center(
           heightFactor: 1,
           child: isLoading
-              ? const SizedBox(
-                  height: 28,
-                  width: 28,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 3,
-                    color: Colors.white,
-                  ),
-                )
+              ? const MiniWave(size: 24)
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.add_circle_outline,
-                        color: Colors.white, size: 28),
+                    Icon(Icons.add_circle_outline, color: AppColors.accent, size: 28),
                     const SizedBox(width: 16),
                     Text(
                       buttonText,
                       style: GoogleFonts.poppins(
                         fontSize: 18,
-                        fontWeight: FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
                     ),
@@ -136,7 +138,14 @@ class TwoColumnLayout extends StatelessWidget {
         children: [
           IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () async {
+              if (onBack != null) {
+                await onBack!(context);
+                return;
+              }
+              // Default behavior: try to pop the current route
+              await Navigator.of(context).maybePop();
+            },
           ),
         ],
       ),

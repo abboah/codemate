@@ -7,6 +7,8 @@ class AgentChatMessage {
   final MessageSender sender;
   final AgentMessageType messageType;
   final String content;
+  // Optional free-form model thoughts stream, stored alongside toolResults for convenience
+  final String? thoughts;
   final Map<String, dynamic>? toolCalls;
   final Map<String, dynamic>? toolResults;
   final List<dynamic>? attachedFiles;
@@ -19,6 +21,7 @@ class AgentChatMessage {
     required this.sender,
     required this.messageType,
     required this.content,
+  this.thoughts,
     this.toolCalls,
     this.toolResults,
     this.attachedFiles,
@@ -33,6 +36,7 @@ class AgentChatMessage {
       sender: MessageSender.values.byName(map['sender']),
       messageType: AgentMessageType.values.byName(map['message_type']),
       content: map['content'] ?? '',
+  thoughts: map['thoughts'],
       toolCalls: map['tool_calls'],
       toolResults: map['tool_results'],
       attachedFiles: map['attached_files'],
@@ -47,6 +51,7 @@ class AgentChatMessage {
     MessageSender? sender,
     AgentMessageType? messageType,
     String? content,
+    String? thoughts,
     Map<String, dynamic>? toolCalls,
     Map<String, dynamic>? toolResults,
     List<dynamic>? attachedFiles,
@@ -59,6 +64,7 @@ class AgentChatMessage {
       sender: sender ?? this.sender,
       messageType: messageType ?? this.messageType,
       content: content ?? this.content,
+      thoughts: thoughts ?? this.thoughts,
       toolCalls: toolCalls ?? this.toolCalls,
       toolResults: toolResults ?? this.toolResults,
       attachedFiles: attachedFiles ?? this.attachedFiles,
@@ -68,14 +74,21 @@ class AgentChatMessage {
   }
 
   Map<String, dynamic> toMap() {
+    // Sanitize tool_results before persisting: strip any UI-only keys like 'ui'
+    Map<String, dynamic>? sanitizedToolResults;
+    if (toolResults != null) {
+      sanitizedToolResults = Map<String, dynamic>.from(toolResults!);
+      sanitizedToolResults.remove('ui');
+    }
     return {
       'id': id,
       'chat_id': chatId,
       'sender': sender.name,
       'message_type': messageType.name,
       'content': content,
+  'thoughts': thoughts,
       'tool_calls': toolCalls,
-      'tool_results': toolResults,
+      'tool_results': sanitizedToolResults,
       'attached_files': attachedFiles,
       'feedback': feedback,
       'sent_at': sentAt.toIso8601String(),

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/themes/colors.dart';
 
 class CourseDetailsPage extends ConsumerStatefulWidget {
   final Course course;
@@ -120,7 +122,7 @@ class _CourseDetailsPageState extends ConsumerState<CourseDetailsPage> {
               return Container(
                 height: 200,
                 color: Colors.white10,
-                child: const Icon(Icons.code, size: 60, color: Colors.blueAccent),
+                child: Icon(Icons.code, size: 60, color: AppColors.accent),
               );
             },
           ),
@@ -156,12 +158,12 @@ class _CourseDetailsPageState extends ConsumerState<CourseDetailsPage> {
         ElevatedButton(
           onPressed: _isLoading ? null : _enroll,
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blueAccent,
+            backgroundColor: AppColors.accent,
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           child: _isLoading
-              ? const CircularProgressIndicator(color: Colors.white)
+              ? const MiniWave(size: 20)
               : Text(
                   'Start Learning',
                   style: GoogleFonts.poppins(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
@@ -212,7 +214,21 @@ class _CourseDetailsPageState extends ConsumerState<CourseDetailsPage> {
         borderRadius: BorderRadius.circular(16),
       ),
       child: topicsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              BigShimmer(width: 200, height: 16),
+              SizedBox(height: 12),
+              BigShimmer(width: 260, height: 14),
+              SizedBox(height: 12),
+              BigShimmer(width: 240, height: 14),
+              SizedBox(height: 12),
+              BigShimmer(width: 220, height: 14),
+            ],
+          ),
+        ),
         error: (err, stack) => Center(child: Text('Error: $err')),
         data: (topics) {
           return ListView.builder(
@@ -232,7 +248,7 @@ class _CourseDetailsPageState extends ConsumerState<CourseDetailsPage> {
                 },
                 leading: Icon(
                   isProject ? Icons.assignment_turned_in : Icons.notes,
-                  color: isProject ? Colors.amber : Colors.blueAccent,
+                  color: isProject ? Colors.amber : AppColors.accent,
                 ),
                 title: Text(
                   topic.title,

@@ -10,6 +10,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:multi_split_view/multi_split_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:codemate/components/ide/terminal_view.dart';
+import 'package:codemate/themes/colors.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class IdePage extends ConsumerStatefulWidget {
   final String projectId;
@@ -60,26 +62,59 @@ class _IdePageState extends ConsumerState<IdePage> {
     final newName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: Text('Rename Project', style: GoogleFonts.poppins(color: Colors.white)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Enter new project name',
-            hintStyle: TextStyle(color: Colors.white54),
-          ),
+        backgroundColor: const Color(0xFF121214),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: Colors.white.withOpacity(0.08)),
+        ),
+        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        title: Row(
+          children: [
+            Icon(Icons.drive_file_rename_outline, color: AppColors.accent, size: 20),
+            const SizedBox(width: 8),
+            Text('Rename Project', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Give your project a memorable name.', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Enter new project name',
+                hintStyle: const TextStyle(color: Colors.white54),
+                filled: true,
+                fillColor: Colors.white.withOpacity(0.06),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: AppColors.accent),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              ),
+              onSubmitted: (_) => Navigator.of(ctx).pop(controller.text.trim()),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancel'),
+            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white70)),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            style: FilledButton.styleFrom(backgroundColor: Colors.blueAccent),
-            child: const Text('Save'),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
+            child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
@@ -148,7 +183,7 @@ class _IdePageState extends ConsumerState<IdePage> {
         ),
         title: Row(
           children: [
-            Icon(Icons.widgets_outlined, color: Colors.blueAccent.withOpacity(0.8)),
+                Icon(Icons.widgets_outlined, color: AppColors.accent.withOpacity(0.8)),
             const SizedBox(width: 12),
             Expanded(
               child: Row(
@@ -174,7 +209,7 @@ class _IdePageState extends ConsumerState<IdePage> {
                       child: Padding(
                         padding: const EdgeInsets.all(6.0),
                         child: _isSavingName
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                            ? const SizedBox(width: 16, height: 16, child: WaveLoader(size: 16))
                             : const Icon(Icons.edit_outlined, size: 18, color: Colors.white70),
                       ),
                     ),
@@ -206,7 +241,7 @@ class _IdePageState extends ConsumerState<IdePage> {
           dividerThickness: 3,
           dividerPainter: DividerPainters.grooved1(
             color: const Color(0xFF0F0F0F),
-            highlightedColor: Colors.blueAccent.withOpacity(0.4),
+                highlightedColor: AppColors.accent.withOpacity(0.4),
           ),
         ),
         child: MultiSplitView(

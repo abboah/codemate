@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:codemate/providers/diff_overlay_provider.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class FileTreeView extends ConsumerStatefulWidget {
   final String projectId;
@@ -80,7 +81,7 @@ class _FileTreeViewState extends ConsumerState<FileTreeView> {
           child: Builder(
             builder: (context) {
               if (projectFilesState.isLoading) {
-                return const Center(child: CircularProgressIndicator(color: Colors.blueAccent));
+                return const Center(child: WaveLoader(size: 28));
               }
               if (projectFilesState.error != null) {
                 return Center(child: Text('Error: ${projectFilesState.error}', style: const TextStyle(color: Colors.redAccent)));

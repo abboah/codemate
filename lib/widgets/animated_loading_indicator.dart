@@ -21,6 +21,8 @@ class _AnimatedLoadingIndicatorState extends State<AnimatedLoadingIndicator>
     'Building the lesson plan...',
     'Almost there, hang on...',
     'Just a moment more...',
+    'Preparing your personalized content...',
+    'Crafting the perfect learning experience...',
   ];
 
   @override
