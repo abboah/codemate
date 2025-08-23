@@ -129,3 +129,71 @@ COMMENT ON TABLE public.terminal_commands IS 'History of commands executed in th
 -- Helpful indexes to improve query performance
 CREATE INDEX IF NOT EXISTS idx_terminal_commands_project ON public.terminal_commands(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_terminal_commands_session ON public.terminal_commands(session_id, created_at DESC);
+
+-- Agent artifacts: stores JSON artifacts produced within agent chats (e.g., project cards, todo lists)
+-- Similar to playground_artifacts but scoped to a project and (optionally) an agent chat
+CREATE TABLE IF NOT EXISTS public.agent_artifacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  chat_id UUID REFERENCES public.agent_chats(id) ON DELETE CASCADE,
+  message_id UUID REFERENCES public.agent_chat_messages(id) ON DELETE SET NULL,
+  artifact_type TEXT NOT NULL, -- e.g., 'project_card', 'todo_list'
+  key TEXT,                    -- optional lookup key or slug
+  data JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_modified TIMESTAMPTZ DEFAULT NOW()
+);
+COMMENT ON TABLE public.agent_artifacts IS 'Stores JSON artifacts (project cards, todo lists, etc.) created by the Agent within a project and chat context.';
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_project ON public.agent_artifacts(project_id, last_modified DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_chat ON public.agent_artifacts(chat_id, last_modified DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_message ON public.agent_artifacts(message_id);
+CREATE INDEX IF NOT EXISTS idx_agent_artifacts_type ON public.agent_artifacts(artifact_type);
+
+-- Enable RLS and define policies restricted to the project owner
+ALTER TABLE IF EXISTS public.agent_artifacts ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if re-running migration idempotently
+DROP POLICY IF EXISTS agent_artifacts_select ON public.agent_artifacts;
+DROP POLICY IF EXISTS agent_artifacts_insert ON public.agent_artifacts;
+DROP POLICY IF EXISTS agent_artifacts_update ON public.agent_artifacts;
+DROP POLICY IF EXISTS agent_artifacts_delete ON public.agent_artifacts;
+
+-- Only allow access to artifacts for projects owned by the current user
+CREATE POLICY agent_artifacts_select ON public.agent_artifacts
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id AND p.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY agent_artifacts_insert ON public.agent_artifacts
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id AND p.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY agent_artifacts_update ON public.agent_artifacts
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id AND p.user_id = auth.uid()
+    )
+  ) WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id AND p.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY agent_artifacts_delete ON public.agent_artifacts
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM public.projects p
+      WHERE p.id = project_id AND p.user_id = auth.uid()
+    )
+  );

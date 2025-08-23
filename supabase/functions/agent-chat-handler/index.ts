@@ -17,7 +17,7 @@ serve(async (req) => {
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY_2");
     if (!geminiApiKey) throw new Error("GEMINI_API_KEY_2 is not set in the Supabase project secrets.");
 
-  const { prompt, history, projectId, model: requestedModel, attachedFiles, includeThoughts } = await req.json();
+  const { prompt, history, projectId, model: requestedModel, attachedFiles, includeThoughts, chatId } = await req.json();
 
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     const supabase = createClient(
@@ -54,7 +54,25 @@ serve(async (req) => {
 
       const systemInstruction = `You are Robin, acting in Ask mode. Provide analysis, suggestions, and code review. You must NOT modify files or suggest that you changed files. You only read code via the read_file tool and reason about it.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}${attachedSummary}`;
 
-      const contents: any[] = Array.isArray(history) && history.length > 0 ? [...history] : [];
+      const contents: any[] = [];
+      if (typeof chatId === 'string' && chatId.length > 0) {
+        try {
+          const { data: histRows } = await supabase
+            .from('agent_chat_messages')
+            .select('sender, content')
+            .eq('chat_id', chatId)
+            .order('sent_at', { ascending: false })
+            .limit(10);
+          const rows = Array.isArray(histRows) ? histRows.slice().reverse() : [];
+          for (const r of rows) {
+            const role = (r.sender === 'user') ? 'user' : 'model';
+            const text = String(r.content || '');
+            if (text.length > 0) contents.push({ role, parts: [{ text }] });
+          }
+        } catch (_) {}
+      } else if (Array.isArray(history) && history.length > 0) {
+        contents.push(...history);
+      }
       contents.push({ role: 'user', parts: [{ text: prompt }] });
 
       const fileEdits: any[] = [];
@@ -157,11 +175,30 @@ serve(async (req) => {
 
             const systemInstruction = `You are Robin, acting in Ask mode. Provide analysis, suggestions, and code review. You must NOT modify files or suggest that you changed files. You only read code via the read_file tool and reason about it.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}${attachedSummary}`;
 
-            const contents: any[] = Array.isArray(history) && history.length > 0 ? [...history] : [];
+            const contents: any[] = [];
+            if (typeof chatId === 'string' && chatId.length > 0) {
+              try {
+                const { data: histRows } = await supabase
+                  .from('agent_chat_messages')
+                  .select('sender, content')
+                  .eq('chat_id', chatId)
+                  .order('sent_at', { ascending: false })
+                  .limit(10);
+                const rows = Array.isArray(histRows) ? histRows.slice().reverse() : [];
+                for (const r of rows) {
+                  const role = (r.sender === 'user') ? 'user' : 'model';
+                  const text = String(r.content || '');
+                  if (text.length > 0) contents.push({ role, parts: [{ text }] });
+                }
+              } catch (_) {}
+            } else if (Array.isArray(history) && history.length > 0) {
+              contents.push(...history);
+            }
             contents.push({ role: 'user', parts: [{ text: prompt }] });
 
   let textSoFar = '';
   let thoughtsSoFar = '';
+  let nextToolId = 1;
             emit({ type: 'start', model: modelName });
 
             while (true) {
@@ -228,7 +265,8 @@ serve(async (req) => {
                   if (Array.isArray(fc) && fc.length > 0) {
                     for (const c of fc) {
                       if (c && typeof c.name === 'string') {
-                        pendingCalls.push({ name: c.name, args: c.args ?? {} });
+                        const id = nextToolId++;
+                        pendingCalls.push({ name: c.name, args: c.args ?? {}, id });
                       }
                     }
                   }
@@ -273,9 +311,11 @@ serve(async (req) => {
                 }
                 // Execute calls (read-only in Ask)
                 if (pendingCalls.length > 0) {
-                  for (const { name, args } of pendingCalls) {
+                  for (const { name, args, id } of pendingCalls as Array<{ name: string; args: Record<string, any>; id: number }>) {
                     let toolResponse: any = {};
                     try {
+                      emit({ type: 'text', delta: `\n\n[tool:${id}]\n\n` });
+                      emit({ type: 'tool_in_progress', id, name });
                       switch (name) {
                         case 'read_file': {
                           const { data, error } = await supabase
@@ -324,6 +364,7 @@ serve(async (req) => {
                     }
                     contents.push({ role: 'model', parts: [{ functionCall: { name, args } }] });
                     contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: toolResponse } } }] });
+                    emit({ type: 'tool_result', id, name, ok: toolResponse.status === 'success', result: toolResponse });
                   }
                   // Continue loop to let the model produce final text
                   continue;

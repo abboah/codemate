@@ -1,4 +1,5 @@
 enum MessageSender { user, ai }
+
 enum AgentMessageType { text, toolRequest, toolResult, error, toolInProgress }
 
 class AgentChatMessage {
@@ -9,7 +10,7 @@ class AgentChatMessage {
   final String content;
   // Optional free-form model thoughts stream, stored alongside toolResults for convenience
   final String? thoughts;
-  final Map<String, dynamic>? toolCalls;
+  final dynamic toolCalls; // May be a Map { events: [] } or a List
   final Map<String, dynamic>? toolResults;
   final List<dynamic>? attachedFiles;
   final String? feedback; // 'like' | 'dislike' | null
@@ -21,7 +22,7 @@ class AgentChatMessage {
     required this.sender,
     required this.messageType,
     required this.content,
-  this.thoughts,
+    this.thoughts,
     this.toolCalls,
     this.toolResults,
     this.attachedFiles,
@@ -36,7 +37,7 @@ class AgentChatMessage {
       sender: MessageSender.values.byName(map['sender']),
       messageType: AgentMessageType.values.byName(map['message_type']),
       content: map['content'] ?? '',
-  thoughts: map['thoughts'],
+      thoughts: map['thoughts'],
       toolCalls: map['tool_calls'],
       toolResults: map['tool_results'],
       attachedFiles: map['attached_files'],
@@ -52,7 +53,7 @@ class AgentChatMessage {
     AgentMessageType? messageType,
     String? content,
     String? thoughts,
-    Map<String, dynamic>? toolCalls,
+    dynamic toolCalls,
     Map<String, dynamic>? toolResults,
     List<dynamic>? attachedFiles,
     String? feedback,
@@ -86,7 +87,7 @@ class AgentChatMessage {
       'sender': sender.name,
       'message_type': messageType.name,
       'content': content,
-  'thoughts': thoughts,
+      'thoughts': thoughts,
       'tool_calls': toolCalls,
       'tool_results': sanitizedToolResults,
       'attached_files': attachedFiles,

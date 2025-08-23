@@ -8,6 +8,7 @@ class DiffPreview extends StatefulWidget {
   final int maxLines;
   final bool collapsible;
   final bool scrollable;
+  final VoidCallback? onTap;
 
   const DiffPreview({
     super.key,
@@ -17,6 +18,7 @@ class DiffPreview extends StatefulWidget {
     this.maxLines = 100,
     this.collapsible = true,
     this.scrollable = false,
+    this.onTap,
   });
 
   @override
@@ -39,7 +41,7 @@ class _DiffPreviewState extends State<DiffPreview> {
     final lines = _buildUnifiedDiff(widget.oldContent, widget.newContent);
     final visibleLines = _expanded ? lines : lines.take(15).toList();
 
-    final content = Container(
+    final contentWidget = Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
@@ -54,11 +56,17 @@ class _DiffPreviewState extends State<DiffPreview> {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(7)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(7),
+              ),
             ),
             child: Row(
               children: [
-                Icon(Icons.compare_arrows_rounded, size: 18, color: Colors.white.withOpacity(0.8)),
+                Icon(
+                  Icons.compare_arrows_rounded,
+                  size: 18,
+                  color: Colors.white.withOpacity(0.8),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -78,10 +86,15 @@ class _DiffPreviewState extends State<DiffPreview> {
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             child: DefaultTextStyle(
-              style: GoogleFonts.jetBrainsMono(fontSize: 13, height: 1.5, color: Colors.white.withOpacity(0.9)),
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 13,
+                height: 1.5,
+                color: Colors.white.withOpacity(0.9),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: visibleLines.map((l) => _buildLine(context, l)).toList(),
+                children:
+                    visibleLines.map((l) => _buildLine(context, l)).toList(),
               ),
             ),
           ),
@@ -89,18 +102,27 @@ class _DiffPreviewState extends State<DiffPreview> {
           if (widget.collapsible && lines.length > 15)
             InkWell(
               onTap: () => setState(() => _expanded = !_expanded),
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7)),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(7),
+              ),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+                  border: Border(
+                    top: BorderSide(color: Colors.white.withOpacity(0.1)),
+                  ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      _expanded ? 'Show less' : 'Show ${lines.length - 15} more lines...',
-                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                      _expanded
+                          ? 'Show less'
+                          : 'Show ${lines.length - 15} more lines...',
+                      style: GoogleFonts.poppins(
+                        color: Colors.white70,
+                        fontSize: 12,
+                      ),
                     ),
                     const SizedBox(width: 6),
                     Icon(
@@ -116,6 +138,16 @@ class _DiffPreviewState extends State<DiffPreview> {
       ),
     );
 
+    Widget finalContent = contentWidget;
+
+    if (widget.onTap != null) {
+      finalContent = InkWell(
+        onTap: widget.onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: contentWidget,
+      );
+    }
+
     if (widget.scrollable) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
@@ -124,14 +156,12 @@ class _DiffPreviewState extends State<DiffPreview> {
             borderRadius: BorderRadius.circular(8),
             color: Colors.black.withOpacity(0.25),
           ),
-          child: SingleChildScrollView(
-            child: content,
-          ),
+          child: SingleChildScrollView(child: finalContent),
         ),
       );
     }
 
-    return content;
+    return finalContent;
   }
 
   Widget _buildLine(BuildContext context, _DiffLine line) {
@@ -151,7 +181,6 @@ class _DiffPreviewState extends State<DiffPreview> {
         prefix = '-';
         break;
       case _DiffKind.context:
-      default:
         barColor = Colors.grey.withOpacity(0.2);
         bgColor = Colors.transparent;
         prefix = ' ';
@@ -165,13 +194,15 @@ class _DiffPreviewState extends State<DiffPreview> {
         children: [
           Container(width: 3, height: 19.5, color: barColor), // Bar
           const SizedBox(width: 8),
-          Text(prefix, style: GoogleFonts.jetBrainsMono(color: Colors.white.withOpacity(0.5), fontSize: 13)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: RichText(
-              text: _buildHighlightedText(line.text),
+          Text(
+            prefix,
+            style: GoogleFonts.jetBrainsMono(
+              color: Colors.white.withOpacity(0.5),
+              fontSize: 13,
             ),
           ),
+          const SizedBox(width: 8),
+          Expanded(child: RichText(text: _buildHighlightedText(line.text))),
         ],
       ),
     );
@@ -185,7 +216,31 @@ class _DiffPreviewState extends State<DiffPreview> {
     final commentColor = Colors.green.shade300;
     final defaultColor = Colors.white.withOpacity(0.9);
 
-    const keywords = {'var', 'final', 'const', 'String', 'int', 'double', 'bool', 'if', 'else', 'for', 'while', 'return', 'class', 'extends', 'with', 'void', 'new', 'await', 'async', 'import', 'export', 'part', 'package'};
+    const keywords = {
+      'var',
+      'final',
+      'const',
+      'String',
+      'int',
+      'double',
+      'bool',
+      'if',
+      'else',
+      'for',
+      'while',
+      'return',
+      'class',
+      'extends',
+      'with',
+      'void',
+      'new',
+      'await',
+      'async',
+      'import',
+      'export',
+      'part',
+      'package',
+    };
 
     final String pattern = [
       r'(\b(?:' + keywords.join('|') + r')\b)',
@@ -200,18 +255,49 @@ class _DiffPreviewState extends State<DiffPreview> {
       exp,
       onMatch: (Match m) {
         if (m[1] != null) {
-          spans.add(TextSpan(text: m[1], style: GoogleFonts.jetBrainsMono(color: keywordColor, fontWeight: FontWeight.bold)));
+          spans.add(
+            TextSpan(
+              text: m[1],
+              style: GoogleFonts.jetBrainsMono(
+                color: keywordColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
         } else if (m[2] != null) {
-          spans.add(TextSpan(text: m[2], style: GoogleFonts.jetBrainsMono(color: stringColor)));
+          spans.add(
+            TextSpan(
+              text: m[2],
+              style: GoogleFonts.jetBrainsMono(color: stringColor),
+            ),
+          );
         } else if (m[3] != null) {
-          spans.add(TextSpan(text: m[3], style: GoogleFonts.jetBrainsMono(color: numberColor)));
+          spans.add(
+            TextSpan(
+              text: m[3],
+              style: GoogleFonts.jetBrainsMono(color: numberColor),
+            ),
+          );
         } else if (m[4] != null) {
-          spans.add(TextSpan(text: m[4], style: GoogleFonts.jetBrainsMono(color: commentColor, fontStyle: FontStyle.italic)));
+          spans.add(
+            TextSpan(
+              text: m[4],
+              style: GoogleFonts.jetBrainsMono(
+                color: commentColor,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          );
         }
         return '';
       },
       onNonMatch: (String nonMatch) {
-        spans.add(TextSpan(text: nonMatch, style: GoogleFonts.jetBrainsMono(color: defaultColor)));
+        spans.add(
+          TextSpan(
+            text: nonMatch,
+            style: GoogleFonts.jetBrainsMono(color: defaultColor),
+          ),
+        );
         return '';
       },
     );
@@ -239,7 +325,8 @@ class _DiffPreviewState extends State<DiffPreview> {
     while (i < m && j < n) {
       if (a[i] == b[j]) {
         lines.add(_DiffLine(_DiffKind.context, a[i]));
-        i++; j++;
+        i++;
+        j++;
       } else if (dp[i + 1][j] >= dp[i][j + 1]) {
         lines.add(_DiffLine(_DiffKind.remove, a[i]));
         i++;
@@ -248,8 +335,12 @@ class _DiffPreviewState extends State<DiffPreview> {
         j++;
       }
     }
-    while (i < m) { lines.add(_DiffLine(_DiffKind.remove, a[i++])); }
-    while (j < n) { lines.add(_DiffLine(_DiffKind.add, b[j++])); }
+    while (i < m) {
+      lines.add(_DiffLine(_DiffKind.remove, a[i++]));
+    }
+    while (j < n) {
+      lines.add(_DiffLine(_DiffKind.add, b[j++]));
+    }
     return lines;
   }
 }

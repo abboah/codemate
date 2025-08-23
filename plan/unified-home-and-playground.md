@@ -42,8 +42,11 @@ This document defines the UX, architecture, and implementation plan for a minima
 
 - Keep all model calls on the server via Supabase Edge Functions.
 - Use existing streaming endpoints (NDJSON) and async iterable pattern.
+- A dedicated `playground-handler` Edge Function exposes tools specific to quick ideation:
+  - project_card_preview, todo_list_create, todo_list_check
+  - analyze_document (PDF/images via Gemini), generate_image, enhance_image
 - Client sends the initial prompt as the first message of a new (or resumed) Playground session.
-- Persist message, tool events, and thoughts (if enabled) per the existing schema.
+- Persist message, tool events, and thoughts (if enabled) in the new `playground_chats` and `playground_chat_messages` tables.
 
 ## Client responsibilities
 

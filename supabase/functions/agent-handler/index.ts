@@ -18,7 +18,7 @@ serve(async (req) => {
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not set in the Supabase project secrets.");
 
-  const { prompt, history, projectId, model: requestedModel, includeThoughts } = await req.json();
+  const { prompt, history, projectId, model: requestedModel, includeThoughts, chatId } = await req.json();
 
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     const supabase = createClient(
@@ -54,7 +54,28 @@ serve(async (req) => {
       `;
 
       // Build compositional contents
-      const contents: any[] = Array.isArray(history) && history.length > 0 ? [...history] : [];
+      // Build history: prefer server-side last 5 turns if chatId provided
+      const contents: any[] = [];
+      if (typeof chatId === 'string' && chatId.length > 0) {
+        try {
+          const { data: histRows } = await supabase
+            .from('agent_chat_messages')
+            .select('sender, content')
+            .eq('chat_id', chatId)
+            .order('sent_at', { ascending: false })
+            .limit(10);
+          const rows = Array.isArray(histRows) ? histRows.slice().reverse() : [];
+          for (const r of rows) {
+            const role = (r.sender === 'user') ? 'user' : 'model';
+            const text = String(r.content || '');
+            if (text.length > 0) contents.push({ role, parts: [{ text }] });
+          }
+        } catch (_) {
+          // fallback to client history below
+        }
+      } else if (Array.isArray(history) && history.length > 0) {
+        contents.push(...history);
+      }
       contents.push({ role: 'user', parts: [{ text: prompt }] });
 
       const fileEdits: any[] = [];
@@ -83,7 +104,7 @@ serve(async (req) => {
                   });
                   if (error) throw error;
                   fileEdits.push({ operation: 'create', path: args.path, old_content: '', new_content: newContent });
-                  toolResponse = { status: 'success', message: `Created ${args.path}` };
+                  toolResponse = { status: 'success', message: `Created ${args.path}`, path: args.path, old_content: '', new_content: newContent };
                   break;
                 }
                 case 'update_file_content': {
@@ -103,7 +124,7 @@ serve(async (req) => {
                     .eq('path', args.path);
                   if (error) throw error;
                   fileEdits.push({ operation: 'update', path: args.path, old_content: oldContent, new_content: newContent });
-                  toolResponse = { status: 'success', message: `Updated ${args.path}` };
+                  toolResponse = { status: 'success', message: `Updated ${args.path}`, path: args.path, old_content: oldContent, new_content: newContent };
                   break;
                 }
                 case 'delete_file': {
@@ -122,7 +143,7 @@ serve(async (req) => {
                     .eq('path', args.path);
                   if (error) throw error;
                   fileEdits.push({ operation: 'delete', path: args.path, old_content: oldContent, new_content: '' });
-                  toolResponse = { status: 'success', message: `Deleted ${args.path}` };
+                  toolResponse = { status: 'success', message: `Deleted ${args.path}`, path: args.path, old_content: oldContent, new_content: '' };
                   break;
                 }
                 case 'read_file': {
@@ -204,6 +225,7 @@ serve(async (req) => {
             const fileEdits: any[] = [];
             let textSoFar = '';
             let thoughtsSoFar = '';
+            let nextToolId = 1;
 
             emit({ type: 'start', model: modelName });
 
@@ -251,7 +273,8 @@ serve(async (req) => {
                   if (Array.isArray(fc) && fc.length > 0) {
                     for (const c of fc) {
                       if (c && typeof c.name === 'string') {
-                        pendingCalls.push({ name: c.name, args: c.args ?? {} });
+                        const id = nextToolId++;
+                        pendingCalls.push({ name: c.name, args: c.args ?? {}, id });
                       }
                     }
                   }
@@ -288,9 +311,12 @@ serve(async (req) => {
 
                 // Execute function calls (if any), do not stream the calls themselves
                 if (pendingCalls.length > 0) {
-                  for (const { name, args } of pendingCalls) {
+                  for (const { name, args, id } of pendingCalls as Array<{ name: string; args: Record<string, any>; id: number }>) {
                     let toolResponse: any = {};
                     try {
+                      // Insert inline marker and emit in-progress event
+                      emit({ type: 'text', delta: `\n\n[tool:${id}]\n\n` });
+                      emit({ type: 'tool_in_progress', id, name });
                       switch (name) {
                         case 'create_file': {
                           const newContent = String(args.content ?? '');
@@ -302,7 +328,7 @@ serve(async (req) => {
                           if (error) throw error;
                           fileEdits.push({ operation: 'create', path: args.path, old_content: '', new_content: newContent });
                           emit({ type: 'file_edit', operation: 'create', path: args.path, old_content: '', new_content: newContent });
-                          toolResponse = { status: 'success', message: `Created ${args.path}` };
+                          toolResponse = { status: 'success', message: `Created ${args.path}`, path: args.path, old_content: '', new_content: newContent };
                           break;
                         }
                         case 'update_file_content': {
@@ -323,7 +349,7 @@ serve(async (req) => {
                           if (error) throw error;
                           fileEdits.push({ operation: 'update', path: args.path, old_content: oldContent, new_content: newContent });
                           emit({ type: 'file_edit', operation: 'update', path: args.path, old_content: oldContent, new_content: newContent });
-                          toolResponse = { status: 'success', message: `Updated ${args.path}` };
+                          toolResponse = { status: 'success', message: `Updated ${args.path}`, path: args.path, old_content: oldContent, new_content: newContent };
                           break;
                         }
                         case 'delete_file': {
@@ -343,7 +369,7 @@ serve(async (req) => {
                           if (error) throw error;
                           fileEdits.push({ operation: 'delete', path: args.path, old_content: oldContent, new_content: '' });
                           emit({ type: 'file_edit', operation: 'delete', path: args.path, old_content: oldContent, new_content: '' });
-                          toolResponse = { status: 'success', message: `Deleted ${args.path}` };
+                          toolResponse = { status: 'success', message: `Deleted ${args.path}`, path: args.path, old_content: oldContent, new_content: '' };
                           break;
                         }
                         case 'read_file': {
@@ -395,7 +421,7 @@ serve(async (req) => {
                     // Push back tool IO and continue loop
                     contents.push({ role: 'model', parts: [{ functionCall: { name, args } }] });
                     contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: toolResponse } } }] });
-                    emit({ type: 'tool_result', name, ok: toolResponse.status === 'success', result: toolResponse });
+                    emit({ type: 'tool_result', id, name, ok: toolResponse.status === 'success', result: toolResponse });
                   }
                   // Continue outer while to let the model produce more text
                   continue;

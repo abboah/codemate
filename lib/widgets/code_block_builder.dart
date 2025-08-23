@@ -17,35 +17,40 @@ class CodeBlockBuilder extends MarkdownElementBuilder {
 
     final String language = codeElement?.attributes['class']?.replaceFirst('language-', '') ?? 'plaintext';
 
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Stack(
-          children: [
-            // Wrap the code view in a SingleChildScrollView for horizontal scrolling
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: HighlightView(
-                codeText,
-                language: language,
-                theme: atomOneDarkTheme,
-                padding: const EdgeInsets.all(16),
-                textStyle: GoogleFonts.firaCode(fontSize: 14, height: 1.6),
-              ),
+    return SelectionContainer.disabled(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                // Horizontal scrolling for wide code
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: HighlightView(
+                    codeText,
+                    language: language,
+                    theme: atomOneDarkTheme,
+                    padding: const EdgeInsets.all(16),
+                    textStyle: GoogleFonts.firaCode(fontSize: 14, height: 1.6),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.copy_all_outlined, color: Colors.white70, size: 18),
+                    tooltip: 'Copy Code',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: codeText));
+                    },
+                  ),
+                ),
+              ],
             ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: IconButton(
-                icon: const Icon(Icons.copy_all_outlined, color: Colors.white70, size: 18),
-                tooltip: 'Copy Code',
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: codeText));
-                },
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

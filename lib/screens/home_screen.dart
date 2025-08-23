@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:ui';
 import 'package:codemate/components/custom_tooltip.dart';
@@ -6,12 +7,16 @@ import 'package:codemate/providers/courses_provider.dart';
 import 'package:codemate/providers/projects_provider.dart';
 import 'package:codemate/providers/user_provider.dart';
 import 'package:codemate/screens/build_page.dart';
-import 'package:codemate/screens/chat_page.dart';
+import 'package:codemate/screens/playground_page.dart';
 import 'package:codemate/screens/learn_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:codemate/themes/colors.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/providers/playground_provider.dart';
+import 'package:codemate/widgets/premium_sidebar.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final UserProfile profile;
@@ -79,27 +84,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Stack(
+      body: Row(
         children: [
-          _buildGlowEffect(context),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
-              child: Column(
-                children: [
-                  _buildTopBar(context, initials, widget.profile.fullName),
-                  Expanded(
+          PremiumSidebar(
+            items: [
+              PremiumSidebarItem(icon: Icons.home, label: 'Home', onTap: () {} , selected: true),
+              PremiumSidebarItem(icon: Icons.play_arrow_rounded, label: 'Playground', onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaygroundPage()));
+              }),
+              PremiumSidebarItem(icon: Icons.construction_rounded, label: 'Build', onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const BuildPage()));
+              }),
+              PremiumSidebarItem(icon: Icons.school_rounded, label: 'Learn', onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const LearnPage()));
+              }),
+            ],
+            topPadding: 20,
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                _buildGlowEffect(context),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildGreeting(widget.profile.username),
-                        const SizedBox(height: 60),
-                        _buildActionButtons(context, projectsCount, coursesCount),
+                        _buildTopBar(context, initials, widget.profile.fullName),
+                        Expanded(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              _buildGreeting(widget.profile.username),
+                              const SizedBox(height: 40),
+                              _buildActionButtons(context, projectsCount, coursesCount),
+                              const SizedBox(height: 28),
+                              Align(
+                                alignment: Alignment.center,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.3),
+                                  child: _HomeInputBar(),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -229,19 +263,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             );
           },
         ),
-        const SizedBox(width: 30),
-        _buildActionButton(
-          context,
-          icon: Icons.chat_bubble_rounded,
-          label: 'Chat',
-          tooltip: 'Ask questions or brainstorm with the AI assistant',
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ChatPage()),
-            );
-          },
-        ),
       ],
     );
   }
@@ -307,6 +328,175 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HomeInputBar extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_HomeInputBar> createState() => _HomeInputBarState();
+}
+
+class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final List<Map<String, dynamic>> _attachments = [];
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  String _guessMime(String name) {
+    final lower = name.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.pdf')) return 'application/pdf';
+    if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.json')) return 'application/json';
+    return 'application/octet-stream';
+  }
+
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
+    if (result == null) return;
+    for (final f in result.files) {
+      if (f.bytes == null) continue;
+      final b64 = base64Encode(f.bytes!);
+      _attachments.add({
+        'base64': b64,
+        'mime_type': _guessMime(f.name),
+        'file_name': f.name,
+      });
+    }
+    setState(() {});
+  }
+
+  void _removeAttachmentAt(int index) {
+    setState(() => _attachments.removeAt(index));
+  }
+
+  void _goToPlayground(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PlaygroundPage()),
+    );
+  }
+
+  void _send(BuildContext context) {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    setState(() => _sending = true);
+    // Kick off the first playground message immediately so it appears when we land there
+    final prov = ref.read(playgroundProvider);
+    final payload = List<Map<String, dynamic>>.from(_attachments);
+    prov.send(text: text, attachments: payload);
+    // Navigate to Playground to view the conversation
+    _goToPlayground(context);
+    // Reset local state
+    _controller.clear();
+    _attachments.clear();
+    setState(() => _sending = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top layer: input area (and attachments chips)
+              if (_attachments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0, left: 4, right: 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (int i = 0; i < _attachments.length; i++)
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white.withOpacity(0.12)),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.attach_file, color: Colors.white70, size: 14),
+                              const SizedBox(width: 6),
+                              Text(
+                                (_attachments[i]['file_name'] as String?) ?? 'file',
+                                style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                              ),
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: () => _removeAttachmentAt(i),
+                                child: const Icon(Icons.close, color: Colors.white60, size: 14),
+                              )
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                maxLines: 6,
+                minLines: 1,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Ask or start building…',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _sending ? null : _send(context),
+              ),
+              const SizedBox(height: 8),
+              // Bottom layer: attach + send row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(children: [
+                    IconButton(
+                      onPressed: _pickFiles,
+                      icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+                    ),
+                  ]),
+                  ElevatedButton(
+                    onPressed: _sending ? null : () => _send(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.all(12),
+                    ),
+                    child: _sending
+                        ? const SizedBox(width: 22, height: 22, child: MiniWave(size: 22))
+                        : const Icon(Icons.arrow_upward, color: Colors.white),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
