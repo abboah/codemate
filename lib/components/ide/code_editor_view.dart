@@ -112,6 +112,7 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
     final codeView = ref.watch(codeViewProvider);
     final codeViewController = ref.read(codeViewProvider.notifier);
 
+    final openFiles = codeView.openFiles;
     final activeFile = codeView.activeFile;
     if (activeFile == null) {
       return Center(
@@ -130,33 +131,44 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Editor header: path and save status
+        // Tabs bar
         Container(
-          height: 36,
-          color: Colors.transparent,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.04),
+            border: Border(
+              bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
+            ),
+          ),
           child: Row(
             children: [
-              Icon(Icons.description_outlined, size: 18, color: Colors.white.withOpacity(0.7)),
-              const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  activeFile.path,
-                  overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w500),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final f in openFiles)
+                        _TabChip(
+                          file: f,
+                          active: f.id == activeFile.id,
+                          onSelect: () => codeViewController.switchTab(f.id),
+                          onClose: () => codeViewController.closeTab(f.id),
+                        ),
+                    ],
+                  ),
                 ),
               ),
+              const SizedBox(width: 8),
               if (_saving) ...[
-                const SizedBox(width: 8),
                 const SizedBox(width: 14, height: 14, child: MiniWave(size: 14)),
                 const SizedBox(width: 6),
                 Text('Saving…', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
               ] else if (_lastSavedAt != null) ...[
-                const SizedBox(width: 8),
                 const Icon(Icons.check, color: Colors.greenAccent, size: 16),
                 const SizedBox(width: 6),
                 Text('Saved', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
-              ]
+              ],
             ],
           ),
         ),
@@ -191,6 +203,73 @@ class _CodeEditorViewState extends ConsumerState<CodeEditorView> {
             ),
           ),
       ],
+    );
+  }
+}
+
+class _TabChip extends StatelessWidget {
+  final ProjectFile file;
+  final bool active;
+  final VoidCallback onSelect;
+  final VoidCallback onClose;
+
+  const _TabChip({
+    required this.file,
+    required this.active,
+    required this.onSelect,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = active ? Colors.white.withOpacity(0.10) : Colors.transparent;
+    final fg = active ? Colors.white : Colors.white70;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
+      child: Tooltip(
+        message: file.path,
+        waitDuration: const Duration(milliseconds: 1000),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.9),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.12)),
+        ),
+        textStyle: GoogleFonts.poppins(color: Colors.white, fontSize: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        preferBelow: false,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onSelect,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.white.withOpacity(0.12)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.description_outlined, size: 14, color: fg),
+                const SizedBox(width: 6),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180),
+                  child: Text(
+                    file.path.split('/').last,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.poppins(color: fg, fontSize: 12),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: onClose,
+                  child: Icon(Icons.close_rounded, size: 14, color: fg.withOpacity(0.8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

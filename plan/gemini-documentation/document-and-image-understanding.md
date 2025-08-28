@@ -72,63 +72,6 @@ main();
 
 ```
 
-
-You can also read a PDF from a local file for processing:
-
-```ts
-
-import { createPartFromUri, GoogleGenAI } from "@google/genai";
-
-const ai = new GoogleGenAI({ apiKey: "GEMINI_API_KEY" });
-
-async function main() {
-    const file = await ai.files.upload({
-        file: 'path-to-localfile.pdf'
-        config: {
-            displayName: 'A17_FlightPlan.pdf',
-        },
-    });
-
-    // Wait for the file to be processed.
-    let getFile = await ai.files.get({ name: file.name });
-    while (getFile.state === 'PROCESSING') {
-        getFile = await ai.files.get({ name: file.name });
-        console.log(`current file status: ${getFile.state}`);
-        console.log('File is still processing, retrying in 5 seconds');
-
-        await new Promise((resolve) => {
-            setTimeout(resolve, 5000);
-        });
-    }
-    if (file.state === 'FAILED') {
-        throw new Error('File processing failed.');
-    }
-
-    // Add the file to the contents.
-    const content = [
-        'Summarize this document',
-    ];
-
-    if (file.uri && file.mimeType) {
-        const fileContent = createPartFromUri(file.uri, file.mimeType);
-        content.push(fileContent);
-    }
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: content,
-    });
-
-    console.log(response.text);
-
-}
-
-main();
-
-
-```
-
-
 # Passing Multiple PDFs
 
 ```ts
@@ -194,10 +137,12 @@ async function main() {
 main();
 ```
 
+NOTE: For easy compatibility, I suggest you use the multiple-document approach as the default when the user wants to upload a document.
+Also include support for multiple file types
 
-# Document types
+### Document types
 
-Technically, you can pass other MIME types for document understanding, like TXT, Markdown, HTML, XML, etc. However, document vision only meaningfully understands PDFs. Other types will be extracted as pure text, and the model won't be able to interpret what we see in the rendering of those files. Any file-type specifics like charts, diagrams, HTML tags, Markdown formatting, etc., will be lost.
+Technically, you can pass other MIME types for document understanding, like TXT, Markdown, HTML, XML, etc (you only use the appropriate `mimeType` argument to match the document type). However, document vision only meaningfully understands PDFs. Other types will be extracted as pure text, and the model won't be able to interpret what we see in the rendering of those files. Any file-type specifics like charts, diagrams, HTML tags, Markdown formatting, etc., will be lost.
 Best practices
 
 For best results:

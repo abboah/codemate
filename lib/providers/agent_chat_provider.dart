@@ -155,7 +155,7 @@ class AgentChatNotifier extends ChangeNotifier {
           useAskHandler ? 'agent-chat-handler' : 'agent-handler';
 
       // 2. Invoke the Supabase Edge Function
-      final response = await _client.functions.invoke(
+    final response = await _client.functions.invoke(
         functionName,
         body: {
           'prompt': text,
@@ -164,6 +164,8 @@ class AgentChatNotifier extends ChangeNotifier {
           'model': model,
           'attachedFiles': attachedFiles,
           'includeThoughts': true,
+      // Provide chatId so server can scope artifacts/messages correctly
+      'chatId': chatId,
         },
       );
 
@@ -174,6 +176,18 @@ class AgentChatNotifier extends ChangeNotifier {
       final Map<String, dynamic> result = response.data as Map<String, dynamic>;
       final aiResponseContent = result['text'] as String? ?? '';
       final List<dynamic> fileEdits = (result['fileEdits'] as List?) ?? [];
+      final List<dynamic> filesAnalyzed = (result['filesAnalyzed'] as List?) ?? [];
+      final List<dynamic> artifactIdsDyn = (result['artifactIds'] as List?) ?? const [];
+      final List<String> artifactIds = artifactIdsDyn.map((e) => e.toString()).toList();
+      // Prepare artifact refs for tool_results and tool_calls
+      final List<Map<String, dynamic>> artifactRefs = [
+        for (final id in artifactIds)
+          {
+            'name': 'artifact_read',
+            'artifactId': id,
+            'result': {'status': 'success', 'id': id},
+          }
+      ];
 
       // 3. Prepare the AI message for streaming and show tool results immediately
       final index = _messages.indexWhere((m) => m.id == aiPlaceholder.id);
@@ -181,7 +195,32 @@ class AgentChatNotifier extends ChangeNotifier {
         _messages[index] = aiPlaceholder.copyWith(
           content: '',
           messageType: AgentMessageType.text,
-          toolResults: {'fileEdits': fileEdits},
+          toolResults: {
+            'fileEdits': fileEdits,
+            if (filesAnalyzed.isNotEmpty) 'filesAnalyzed': filesAnalyzed,
+            if (artifactRefs.isNotEmpty) 'artifacts': artifactRefs,
+          },
+          toolCalls: {
+            'events': [
+              // artifacts mapping
+              for (int i = 0; i < artifactRefs.length; i++)
+                {
+                  'index': i + 1,
+                  'name': artifactRefs[i]['name'],
+                  'array': 'artifacts',
+                  'offset': i,
+                  'artifactId': artifactRefs[i]['artifactId'],
+                },
+              // filesAnalyzed mapping (indexes continue after artifacts)
+              for (int j = 0; j < filesAnalyzed.length; j++)
+                {
+                  'index': artifactRefs.length + j + 1,
+                  'name': 'analyze_document',
+                  'array': 'filesAnalyzed',
+                  'offset': j,
+                },
+            ]
+          },
         );
         notifyListeners();
 
@@ -204,10 +243,25 @@ class AgentChatNotifier extends ChangeNotifier {
       await _client.from('agent_chat_messages').insert(userMessage.toMap());
       final sentAtUser = userMessage.sentAt;
       final sentAtAi = sentAtUser.add(const Duration(milliseconds: 10));
-      final aiWithToolResults = _messages[index].copyWith(sentAt: sentAtAi);
-      await _client
+  final aiWithToolResults = _messages[index].copyWith(sentAt: sentAtAi);
+      final inserted = await _client
           .from('agent_chat_messages')
-          .insert(aiWithToolResults.toMap());
+          .insert(aiWithToolResults.toMap())
+          .select('id')
+          .single();
+      final String? aiMessageId = (inserted as Map<String, dynamic>?)?['id'] as String?;
+
+      // Link any created artifacts to this AI message (and ensure chat_id)
+      if (aiMessageId != null && artifactIds.isNotEmpty) {
+        for (final aid in artifactIds) {
+          try {
+            await _client
+                .from('agent_artifacts')
+                .update({'message_id': aiMessageId, 'chat_id': chatId})
+                .eq('id', aid);
+          } catch (_) {}
+        }
+      }
 
       // 6. Refresh the file tree in case the agent modified files
       _ref.read(projectFilesProvider(projectId).notifier).fetchFiles();
@@ -273,6 +327,8 @@ class AgentChatNotifier extends ChangeNotifier {
       'model': model,
       'attachedFiles': attachedFiles,
       'includeThoughts': true,
+      // Provide chatId so server can scope artifacts/messages correctly
+      'chatId': chatId,
     });
 
     _isStreaming = true;
@@ -291,15 +347,16 @@ class AgentChatNotifier extends ChangeNotifier {
     );
     notifyListeners();
 
-    final fileEdits = <dynamic>[];
-    final filesRead = <Map<String, dynamic>>[]; // { path, lines }
-    final filesSearched =
-        <
-          Map<String, dynamic>
-        >[]; // { query, results: [{path, matches:[{line,text}]}] }
-    final toolCalls =
-        <Map<String, dynamic>>[]; // { index, name, array, offset }
-    final StringBuffer thoughtsBuf = StringBuffer();
+  final fileEdits = <dynamic>[];
+  final filesRead = <Map<String, dynamic>>[]; // { path, lines }
+  final filesSearched = <Map<String, dynamic>>[]; // { query, results }
+  // First-class artifacts captured during stream; entries: { name, artifactId?, result }
+  final artifacts = <Map<String, dynamic>>[];
+  // Composite tool executions captured during stream
+  final compositeTasks = <Map<String, dynamic>>[];
+  final toolCalls = <Map<String, dynamic>>[]; // { index, name, array, offset, artifactId? }
+  final StringBuffer thoughtsBuf = StringBuffer();
+  final List<String> createdArtifactIds = <String>[];
 
     // Parse NDJSON lines
     await for (final evt in ndjson.stream()) {
@@ -354,7 +411,7 @@ class AgentChatNotifier extends ChangeNotifier {
           _messages[index] = _messages[index].copyWith(toolResults: tr);
           notifyListeners();
           break;
-        case 'tool_result':
+  case 'tool_result':
           {
             final name = evt['name'] as String?;
             final result = evt['result'];
@@ -451,24 +508,111 @@ class AgentChatNotifier extends ChangeNotifier {
                 name == 'todo_list_create' ||
                 name == 'todo_list_check' ||
                 name == 'artifact_read') {
-              // Handle agent artifact tools - these don't need special processing
-              // just capture the tool call mapping for inline rendering
+              // Normalize artifact tool results into tool_results.artifacts
+              String? artifactId;
+              if (result is Map<String, dynamic>) {
+                final rid = result['artifact_id'] ?? result['id'];
+                if (rid != null) artifactId = rid.toString();
+              }
+              artifacts.add({
+                'name': name,
+                if (artifactId != null) 'artifactId': artifactId,
+                'result': result,
+              });
               final tr = Map<String, dynamic>.from(
                 _messages[index].toolResults ?? {'fileEdits': fileEdits},
               );
+              tr['artifacts'] = List<Map<String, dynamic>>.from(artifacts);
               final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
               ui['expandThoughts'] = false;
               tr['ui'] = ui;
               _messages[index] = _messages[index].copyWith(toolResults: tr);
               notifyListeners();
               if (id != null) {
-                toolCalls.add({
+                final call = <String, dynamic>{
                   'index': id,
                   'name': name,
                   'array': 'artifacts',
-                  'offset': toolCalls.length, // Simple offset for artifacts
+                  'offset': artifacts.length - 1,
+                };
+                if (artifactId != null) call['artifactId'] = artifactId;
+                toolCalls.add(call);
+                _messages[index] = _messages[index].copyWith(
+                  toolResults: tr,
+                  toolCalls: <String, dynamic>{'events': toolCalls},
+                );
+                notifyListeners();
+              }
+            } else if (name == 'implement_feature_and_update_todo') {
+              // Capture composite tool results into tool_results.compositeTasks for persistence and inline mapping
+              if (result is Map<String, dynamic>) {
+                compositeTasks.add(Map<String, dynamic>.from(result));
+                final tr = Map<String, dynamic>.from(
+                  _messages[index].toolResults ?? {'fileEdits': fileEdits},
+                );
+                tr['compositeTasks'] = List<Map<String, dynamic>>.from(compositeTasks);
+                // Collapse thoughts
+                final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
+                ui['expandThoughts'] = false;
+                tr['ui'] = ui;
+                _messages[index] = _messages[index].copyWith(toolResults: tr);
+                notifyListeners();
+                if (id != null) {
+                  toolCalls.add({
+                    'index': id,
+                    'name': name,
+                    'array': 'compositeTasks',
+                    'offset': compositeTasks.length - 1,
+                  });
+                  _messages[index] = _messages[index].copyWith(
+                    toolResults: tr,
+                    toolCalls: <String, dynamic>{'events': toolCalls},
+                  );
+                  notifyListeners();
+                }
+              }
+            } else if (name == 'analyze_document') {
+              // Capture analyze_document results into tool_results.filesAnalyzed
+              // Include both success and error payloads for debugging
+              final tr = Map<String, dynamic>.from(
+                _messages[index].toolResults ?? {'fileEdits': fileEdits},
+              );
+              final filesAnalyzed = List<Map<String, dynamic>>.from(
+                (tr['filesAnalyzed'] as List? ?? const []),
+              );
+              Map<String, dynamic> toAdd;
+              if (result is Map) {
+                toAdd = Map<String, dynamic>.from(result as Map);
+              } else {
+                toAdd = {'status': 'unknown', 'result': result};
+              }
+              bool isDup = false;
+              final fu = (toAdd['file_url']?.toString() ?? '').trim();
+              if (fu.isNotEmpty) {
+                isDup = filesAnalyzed.any((e) => (e['file_url']?.toString() ?? '') == fu);
+              } else {
+                final mt = toAdd['mime_type']?.toString();
+                final bl = toAdd['byte_length']?.toString();
+                if (mt != null && bl != null) {
+                  isDup = filesAnalyzed.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
+                }
+              }
+              if (!isDup) {
+                filesAnalyzed.add(toAdd);
+                tr['filesAnalyzed'] = filesAnalyzed;
+              }
+              final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
+              ui['expandThoughts'] = false;
+              tr['ui'] = ui;
+              _messages[index] = _messages[index].copyWith(toolResults: tr);
+              notifyListeners();
+              if (id != null && !isDup) {
+                toolCalls.add({
+                  'index': id,
+                  'name': name,
+                  'array': 'filesAnalyzed',
+                  'offset': filesAnalyzed.length - 1,
                 });
-                // Store tool call mapping in a separate field for UI rendering
                 _messages[index] = _messages[index].copyWith(
                   toolResults: tr,
                   toolCalls: <String, dynamic>{'events': toolCalls},
@@ -499,6 +643,90 @@ class AgentChatNotifier extends ChangeNotifier {
             tr['ui'] = ui;
             _messages[index] = _messages[index].copyWith(toolResults: tr);
           }
+          // merge any filesAnalyzed sent at end (server may batch these)
+          if (evt['filesAnalyzed'] is List) {
+            final tr = Map<String, dynamic>.from(
+              _messages[index].toolResults ?? {},
+            );
+            final existing = List<Map<String, dynamic>>.from(
+              (tr['filesAnalyzed'] as List? ?? const []),
+            );
+            final incoming = List<Map<String, dynamic>>.from(
+              List<dynamic>.from(evt['filesAnalyzed']).map((e) => Map<String, dynamic>.from(e as Map)),
+            );
+            int addedCount = 0;
+            for (final inc in incoming) {
+              final fu = (inc['file_url']?.toString() ?? '').trim();
+              bool dup = false;
+              if (fu.isNotEmpty) {
+                dup = existing.any((e) => (e['file_url']?.toString() ?? '') == fu);
+              } else {
+                final mt = inc['mime_type']?.toString();
+                final bl = inc['byte_length']?.toString();
+                if (mt != null && bl != null) {
+                  dup = existing.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
+                }
+              }
+              if (!dup) {
+                existing.add(inc);
+                addedCount++;
+              }
+            }
+            tr['filesAnalyzed'] = existing;
+            // add synthetic toolCalls mapping for newly added items
+            if (addedCount > 0) {
+              final startOffset = existing.length - addedCount;
+              for (int i = 0; i < addedCount; i++) {
+                toolCalls.add({
+                  'index': (toolCalls.length + 1),
+                  'name': 'analyze_document',
+                  'array': 'filesAnalyzed',
+                  'offset': startOffset + i,
+                });
+              }
+            }
+            _messages[index] = _messages[index].copyWith(
+              toolResults: tr,
+              toolCalls: <String, dynamic>{'events': toolCalls},
+            );
+          }
+          // capture artifactIds from server to link after saving message
+          if (evt['artifactIds'] is List) {
+            createdArtifactIds
+              ..clear()
+              ..addAll(List<dynamic>.from(evt['artifactIds']).map((e) => e.toString()));
+            // Merge artifactIds into artifacts array and toolCalls
+            if (artifacts.isNotEmpty) {
+              for (int i = 0; i < artifacts.length && i < createdArtifactIds.length; i++) {
+                final a = Map<String, dynamic>.from(artifacts[i]);
+                a['artifactId'] ??= createdArtifactIds[i];
+                artifacts[i] = a;
+              }
+              final tr2 = Map<String, dynamic>.from(
+                _messages[index].toolResults ?? {},
+              );
+              tr2['artifacts'] = List<Map<String, dynamic>>.from(artifacts);
+              final ui2 = Map<String, dynamic>.from((tr2['ui'] as Map? ?? {}));
+              ui2['expandThoughts'] = false;
+              tr2['ui'] = ui2;
+              _messages[index] = _messages[index].copyWith(toolResults: tr2);
+              if (toolCalls.isNotEmpty) {
+                for (int i = 0; i < toolCalls.length; i++) {
+                  final c = toolCalls[i];
+                  if (c['array'] == 'artifacts' && c['artifactId'] == null) {
+                    final off = (c['offset'] is int) ? c['offset'] as int : -1;
+                    if (off >= 0 && off < artifacts.length) {
+                      final aid = artifacts[off]['artifactId'];
+                      if (aid != null) toolCalls[i] = {...c, 'artifactId': aid};
+                    }
+                  }
+                }
+                _messages[index] = _messages[index].copyWith(
+                  toolCalls: <String, dynamic>{'events': toolCalls},
+                );
+              }
+            }
+          }
           break;
       }
     }
@@ -516,7 +744,7 @@ class AgentChatNotifier extends ChangeNotifier {
       toolCalls: <String, dynamic>{'events': toolCalls},
       sentAt: sentAtAi,
     );
-    // Strip UI-only keys before saving
+  // Strip UI-only keys before saving
     final sanitized = aiToSave.copyWith(
       toolResults: () {
         final tr = aiToSave.toolResults;
@@ -526,7 +754,23 @@ class AgentChatNotifier extends ChangeNotifier {
         return m;
       }(),
     );
-    await _client.from('agent_chat_messages').insert(sanitized.toMap());
+    final inserted = await _client
+        .from('agent_chat_messages')
+        .insert(sanitized.toMap())
+        .select('id')
+        .single();
+    final String? aiMessageId = (inserted as Map<String, dynamic>?)?['id'] as String?;
+    // Link artifacts created during this turn to the saved AI message
+    if (aiMessageId != null && createdArtifactIds.isNotEmpty) {
+      for (final aid in createdArtifactIds) {
+        try {
+          await _client
+              .from('agent_artifacts')
+              .update({'message_id': aiMessageId, 'chat_id': chatId})
+              .eq('id', aid);
+        } catch (_) {}
+      }
+    }
     _ref.read(projectFilesProvider(projectId).notifier).fetchFiles();
 
     _isStreaming = false;

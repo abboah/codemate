@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -26,7 +27,20 @@ class ToolEventPreviews extends StatelessWidget {
     final name = e['name'] as String? ?? '';
     final result = e['result'];
     switch (name) {
+      case 'analyze_document':
+        return _AnalyzeDocumentPreview(result: result);
+      case 'implement_feature_and_update_todo':
+        return _CompositeImplementFeaturePreview(
+          result: result,
+          openCanvas: openCanvas,
+        );
       case 'canvas_create_file':
+        return _CanvasCreatePreview(
+          result: result,
+          fetchCanvasPreview: fetchCanvasPreview,
+          openCanvas: openCanvas,
+        );
+      case 'canvas_update_file_content':
         return _CanvasCreatePreview(
           result: result,
           fetchCanvasPreview: fetchCanvasPreview,
@@ -103,6 +117,7 @@ class _CanvasCreatePreview extends StatefulWidget {
 class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
   String? _preview;
   bool _loading = true;
+  String? _error;
 
   @override
   void initState() {
@@ -111,60 +126,69 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
   }
 
   Future<void> _load() async {
-    final path =
-        (widget.result is Map<String, dynamic>)
-            ? (widget.result['path'] as String?)
-            : null;
+    final map = (widget.result is Map<String, dynamic>) ? widget.result as Map<String, dynamic> : {};
+    final status = map['status'] as String?;
+    if (status == 'error') {
+      setState(() { _error = map['message']?.toString(); _loading = false; });
+      return;
+    }
+    final inlineContent = map['content'] as String?;
+    final path = map['path'] as String?;
+    if ((inlineContent != null && inlineContent.isNotEmpty)) {
+      setState(() { _preview = inlineContent; _loading = false; });
+      return;
+    }
     if (path != null && path.isNotEmpty) {
       final content = await widget.fetchCanvasPreview(path);
       if (!mounted) return;
-      setState(() {
-        _preview = content;
-        _loading = false;
-      });
-    } else {
-      setState(() => _loading = false);
+      setState(() { _preview = content; _loading = false; });
+      return;
     }
+    setState(() { _loading = false; });
   }
 
   @override
   Widget build(BuildContext context) {
-    final path =
-        (widget.result is Map<String, dynamic>)
-            ? (widget.result['path'] as String?)
-            : null;
+    final map = (widget.result is Map<String, dynamic>) ? widget.result as Map<String, dynamic> : {};
+    final path = map['path'] as String?;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF151824), Color(0xFF111320), Color(0xFF0E1018)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: Colors.white.withOpacity(0.10)),
       ),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (path != null)
             Row(
               children: [
-                const Icon(
-                  Icons.insert_drive_file_outlined,
-                  color: Colors.white70,
-                  size: 16,
-                ),
+                const Icon(Icons.insert_drive_file_outlined, color: Colors.white70, size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     path,
-                    style: GoogleFonts.robotoMono(
-                      color: Colors.white70,
-                      fontSize: 13,
-                    ),
+                    style: GoogleFonts.poppins(color: Colors.white70, fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                const SizedBox(width: 6),
+                TextButton.icon(
+                  onPressed: () { if (path.isNotEmpty) widget.openCanvas(path); },
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Open in Canvas'),
                 ),
               ],
             ),
           const SizedBox(height: 8),
+          if (_error != null) ...[
+            _ErrorCallout(message: _error!),
+          ] else
           if (_loading)
             Text(
               'Loading preview…',
@@ -188,7 +212,7 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
                 children: [
                   Text(
                     _preview!.split('\n').take(8).join('\n'),
-                    style: GoogleFonts.robotoMono(
+                    style: GoogleFonts.jetBrainsMono(
                       color: Colors.white70,
                       fontSize: 12,
                       height: 1.6,
@@ -197,46 +221,22 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
                   const SizedBox(height: 10),
                   Row(
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          if (path != null) widget.openCanvas(path);
-                        },
-                        icon: const Icon(Icons.open_in_new, size: 16),
-                        label: const Text('Open in Canvas'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF7F5AF0),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 10,
-                          ),
-                        ),
+                      _PrimaryButton(
+                        icon: Icons.open_in_new,
+                        label: 'Open in Canvas',
+                        onPressed: path == null ? null : () => widget.openCanvas(path),
                       ),
                       const Spacer(),
-                      TextButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder:
-                                (ctx) => AlertDialog(
-                                  backgroundColor: const Color(0xFF191A20),
-                                  title: const Text(
-                                    'Canvas Preview',
-                                    style: TextStyle(color: Colors.white),
-                                  ),
-                                  content: SingleChildScrollView(
-                                    child: Text(
-                                      _preview!,
-                                      style: GoogleFonts.robotoMono(
-                                        color: Colors.white70,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                          );
-                        },
-                        icon: const Icon(Icons.unfold_more),
-                        label: const Text('Expand'),
+                      _GhostButton(
+                        icon: Icons.unfold_more,
+                        label: 'Expand',
+                        onPressed: () { _showExpanded(context, _preview!); },
+                      ),
+                      const SizedBox(width: 8),
+                      _GhostButton(
+                        icon: Icons.copy_all,
+                        label: 'Copy',
+                        onPressed: () { Clipboard.setData(ClipboardData(text: _preview!)); },
                       ),
                     ],
                   ),
@@ -244,6 +244,57 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  void _showExpanded(BuildContext context, String code) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F1420),
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 920, minHeight: 200),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Text('Canvas Preview', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  _GhostButton(
+                    icon: Icons.copy_all,
+                    label: 'Copy',
+                    onPressed: () { Clipboard.setData(ClipboardData(text: code)); },
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.25),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: SingleChildScrollView(
+                  child: Text(
+                    code,
+                    style: GoogleFonts.jetBrainsMono(color: Colors.white70, height: 1.55),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -680,6 +731,285 @@ class _GenericToolHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AnalyzeDocumentPreview extends StatelessWidget {
+  final dynamic result;
+  const _AnalyzeDocumentPreview({required this.result});
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+  final rawStatus = (map['status'] as String?) ?? 'unknown';
+  final status = rawStatus.toLowerCase();
+    final mime = (map['mime_type'] as String?) ?? (map['mime'] as String?) ?? '';
+    final message = (map['message'] as String?) ?? '';
+  final bool isOk = status == 'success';
+  final bool isErr = status == 'error' || (status == 'unknown' && message.isNotEmpty);
+  final bool isProcessing = !isOk && !isErr && (status == 'processing' || status == 'in_progress' || status == 'pending' || status == 'unknown');
+
+  final Color color = isOk
+    ? const Color(0xFF2CB67D)
+    : (isProcessing ? const Color(0xFFE3B341) : const Color(0xFFE45858));
+  final Color bg = isOk
+    ? const Color(0x332CB67D)
+    : (isProcessing ? const Color(0x33E3B341) : const Color(0x33E45858));
+  final Color border = isOk
+    ? const Color(0x552CB67D)
+    : (isProcessing ? const Color(0x55E3B341) : const Color(0x55E45858));
+
+  final String label = isOk
+    ? ((mime.isNotEmpty ? mime.split('/').first.toUpperCase() : 'FILE') + ' analyzed')
+    : (isProcessing
+      ? ((mime.isNotEmpty ? mime.split('/').first.toUpperCase() : 'FILE') + ' processing…')
+      : 'Analysis failed');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      child: Row(
+        children: [
+          Icon(isOk ? Icons.analytics_outlined : (isProcessing ? Icons.hourglass_top_outlined : Icons.error_outline), color: Colors.white70, size: 16),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'analyze_document',
+                  style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+                Container(
+                  decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20), border: Border.all(color: border)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  child: Text(
+                    label,
+                    style: GoogleFonts.robotoMono(color: color, fontSize: 12),
+                  ),
+                ),
+                if (!isOk && !isProcessing && message.isNotEmpty)
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompositeImplementFeaturePreview extends StatelessWidget {
+  final dynamic result;
+  final void Function(String path) openCanvas;
+  const _CompositeImplementFeaturePreview({required this.result, required this.openCanvas});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final taskTitle = (map['task_title'] as String?) ?? 'Task';
+    final canvas = (map['canvas_file'] as Map<String, dynamic>?) ?? const {};
+    final path = canvas['path'] as String?;
+    final content = (canvas['content'] as String?) ?? '';
+    final mode = (map['mode'] as String?) ?? 'updated';
+    final headerLabel = mode == 'created' ? 'Created file' : 'Updated file';
+    final status = (map['status'] as String?) ?? 'success';
+    final message = (map['message'] as String?) ?? '';
+    final availablePaths = (map['available_paths'] as List?)?.map((e) => e.toString()).toList() ?? const [];
+
+    final boxDecoration = BoxDecoration(
+      gradient: const LinearGradient(
+        colors: [Color(0xFF0F1420), Color(0xFF0C1018)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: Colors.white.withOpacity(0.10)),
+    );
+
+    return Container(
+      decoration: boxDecoration,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                status == 'error' ? Icons.error_outline : Icons.task_alt,
+                color: status == 'error' ? const Color(0xFFE45858) : const Color(0xFF2CB67D),
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  status == 'error' ? 'Action needed' : 'Completed: $taskTitle',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (status == 'error' && message.isNotEmpty) ...[
+            _ErrorCallout(message: message),
+            if (availablePaths.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: availablePaths
+                    .map((p) => Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.06),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.white.withOpacity(0.08)),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          child: Text(p, style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12)),
+                        ))
+                    .toList(),
+              ),
+            ],
+          ] else if (path != null)
+            Row(
+              children: [
+                const Icon(Icons.insert_drive_file_outlined, color: Colors.white70, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    '$headerLabel · $path',
+                    style: GoogleFonts.poppins(color: Colors.white70),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                TextButton.icon(
+                  onPressed: () { if (path.isNotEmpty) openCanvas(path); },
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Open in Canvas'),
+                ),
+              ],
+            ),
+          const SizedBox(height: 10),
+          if (status != 'error')
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0x332CB67D),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0x552CB67D)),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    content.split('\n').take(12).join('\n'),
+                    style: GoogleFonts.jetBrainsMono(
+                      color: Colors.white,
+                      fontSize: 12,
+                      height: 1.6,
+                    ),
+                  ),
+                  if (content.split('\n').length > 12) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '+ more lines',
+                      style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorCallout extends StatelessWidget {
+  final String message;
+  const _ErrorCallout({required this.message});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0x33E45858),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0x55E45858)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFE45858), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: GoogleFonts.poppins(color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PrimaryButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  const _PrimaryButton({required this.icon, required this.label, required this.onPressed});
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color(0xFF7F5AF0),
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
+
+class _GhostButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  const _GhostButton({required this.icon, required this.label, required this.onPressed});
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
     );
   }

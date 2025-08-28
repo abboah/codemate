@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ui';
+import 'dart:typed_data';
 
 import 'package:codemate/components/ide/code_block_builder.dart';
 import 'package:codemate/components/ide/inline_code_builder.dart';
@@ -18,11 +19,15 @@ import 'package:codemate/components/ide/edit_summary.dart';
 import 'package:codemate/providers/code_view_provider.dart';
 import 'package:codemate/components/ide/attach_code_dialog.dart';
 import 'package:codemate/providers/diff_overlay_provider.dart';
+import 'package:codemate/widgets/agent_tool_event_previews.dart';
 import 'package:codemate/supabase_config.dart';
 import 'package:codemate/utils/ndjson_stream.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:codemate/widgets/playground_code_block.dart';
+import 'package:codemate/widgets/agent_tool_event_previews.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AgentChatView extends ConsumerStatefulWidget {
   final String projectId;
@@ -41,6 +46,67 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
   List<AgentChatMessage> _localMessages = [];
   bool _isSendingNewChat = false;
+  bool _isUploading = false; // show uploading indicator during send
+
+  // Composer image hover preview via global overlay
+  OverlayEntry? _imageHoverOverlay;
+
+  void _removeImageHoverOverlay() {
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
+    _imageHoverOverlay = null;
+  }
+
+  void _showImageHoverOverlayForPill(BuildContext pillContext, Uint8List bytes) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8; // try above first
+    if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: left,
+        top: top,
+        width: previewW,
+        height: previewH,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 16, offset: const Offset(0, 6)),
+                ],
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(bytes, width: previewW, height: previewH, fit: BoxFit.cover),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
 
   // Attachments state: list of maps { path, content, file_id }
   List<Map<String, dynamic>> _attachedFiles = [];
@@ -58,6 +124,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
   @override
   void dispose() {
+    _removeImageHoverOverlay();
     _controller.removeListener(_handleTextChangedForMentions);
     _controller.dispose();
     _inputFocusNode.dispose();
@@ -87,13 +154,53 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     if (_activeChatId == null) {
       _startNewChat(text, attachmentsToSend);
     } else {
-      ref
-          .read(agentChatProvider(_activeChatId!).notifier)
-          .sendMessage(
-            text: text,
+  // Upload any queued files first; keep user-visible text unchanged
+  String promptText = text;
+      List<Map<String, dynamic>> updatedAttachments = attachmentsToSend;
+      final uploadables = attachmentsToSend.where((a) => a['bytes'] is Uint8List && (a['type'] == 'img' || a['type'] == 'doc')).toList();
+      if (uploadables.isNotEmpty) {
+        setState(() => _isUploading = true);
+        try {
+          final supa = Supabase.instance.client;
+          final List<Map<String, dynamic>> uploaded = [];
+          for (final a in uploadables) {
+            final bytes = a['bytes'] as Uint8List;
+            final isImage = (a['type'] == 'img');
+            final folder = isImage ? 'images' : 'docs';
+            final safeName = (a['name'] as String?)?.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), '_') ?? 'upload';
+            final uid = supa.auth.currentUser?.id ?? 'anon';
+            final key = '$uid/$folder/${const Uuid().v4()}_$safeName';
+            final mime = (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
+            await supa.storage.from('user-uploads').uploadBinary(key, bytes, fileOptions: FileOptions(contentType: mime));
+            final signed = await supa.storage.from('user-uploads').createSignedUrl(key, 60 * 60);
+            uploaded.add({
+              'type': isImage ? 'img' : 'doc',
+              'bucket_url': signed,
+              'bucket_path': key,
+              'name': a['name'] ?? safeName,
+              'mime_type': mime,
+              'size': (a['size'] as int?) ?? bytes.length,
+            });
+          }
+          final others = attachmentsToSend.where((a) => !(a['bytes'] is Uint8List)).toList();
+          updatedAttachments = [...others, ...uploaded];
+          // Do not append URLs into the prompt to avoid bloating the user bubble.
+          // The backend receives attachedFiles separately and will guide the model accordingly.
+          promptText = text;
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Attachment upload failed: $e')),
+          );
+        } finally {
+          if (mounted) setState(() => _isUploading = false);
+        }
+      }
+
+      ref.read(agentChatProvider(_activeChatId!).notifier).sendMessage(
+            text: promptText,
             model: _selectedModel,
             projectId: widget.projectId,
-            attachedFiles: attachmentsToSend,
+            attachedFiles: updatedAttachments,
             useAskHandler: _askMode,
             stream: true,
           );
@@ -104,6 +211,49 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     String text,
     List<Map<String, dynamic>> attachments,
   ) async {
+  // Upload any queued files now (we delay uploads until send). Keep user text unchanged.
+  String promptText = text;
+    List<Map<String, dynamic>> updatedAttachments = attachments;
+    final uploadables = attachments.where((a) => a['bytes'] is Uint8List && (a['type'] == 'img' || a['type'] == 'doc')).toList();
+    if (uploadables.isNotEmpty) {
+      setState(() => _isUploading = true);
+      try {
+        final supa = Supabase.instance.client;
+        final List<Map<String, dynamic>> uploaded = [];
+        for (final a in uploadables) {
+          final bytes = a['bytes'] as Uint8List;
+          final isImage = (a['type'] == 'img');
+          final folder = isImage ? 'images' : 'docs';
+          final safeName = (a['name'] as String?)?.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), '_') ?? 'upload';
+          final uid = supa.auth.currentUser?.id ?? 'anon';
+          final key = '$uid/$folder/${const Uuid().v4()}_$safeName';
+          final mime = (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
+          await supa.storage.from('user-uploads').uploadBinary(key, bytes, fileOptions: FileOptions(contentType: mime));
+          // Signed URL for limited-time access
+          final signed = await supa.storage.from('user-uploads').createSignedUrl(key, 60 * 60);
+          uploaded.add({
+            'type': isImage ? 'img' : 'doc',
+            'bucket_url': signed,
+            'bucket_path': key,
+            'name': a['name'] ?? safeName,
+            'mime_type': mime,
+            'size': (a['size'] as int?) ?? bytes.length,
+          });
+        }
+        // Replace local upload placeholders in attachments with uploaded metadata
+        final others = attachments.where((a) => !(a['bytes'] is Uint8List)).toList();
+        updatedAttachments = [...others, ...uploaded];
+        // Append links to prompt for model consumption
+  // Do not append URLs into the prompt; send attachment metadata separately.
+  promptText = text;
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Attachment upload failed: $e')),
+        );
+      } finally {
+        if (mounted) setState(() => _isUploading = false);
+      }
+    }
     setState(() {
       _isSendingNewChat = true;
       final userMessage = AgentChatMessage(
@@ -111,8 +261,8 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         chatId: '',
         sender: MessageSender.user,
         messageType: AgentMessageType.text,
-        content: text,
-        attachedFiles: attachments,
+        content: promptText,
+        attachedFiles: updatedAttachments,
         sentAt: DateTime.now(),
       );
       final aiPlaceholder = AgentChatMessage(
@@ -141,22 +291,27 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         'x-client-info': 'supabase-dart',
       };
       final body = jsonEncode({
-        'prompt': text,
+        'prompt': promptText,
         'history': [],
         'projectId': widget.projectId,
         'model': _selectedModel,
-        'attachedFiles': attachments,
+        'attachedFiles': updatedAttachments,
         'includeThoughts': true,
       });
 
       final ndjson = NdjsonClient(url: url, headers: headers, body: body);
 
-      final fileEdits = <dynamic>[];
-      final filesRead = <Map<String, dynamic>>[];
-      final filesSearched = <Map<String, dynamic>>[];
-      final inlineEvents = <Map<String, dynamic>>[];
-      final toolCalls = <Map<String, dynamic>>[];
+  final fileEdits = <dynamic>[];
+  final filesRead = <Map<String, dynamic>>[];
+  final filesSearched = <Map<String, dynamic>>[];
+  final inlineEvents = <Map<String, dynamic>>[];
+  final toolCalls = <Map<String, dynamic>>[];
+  // First-class artifact results captured during stream; entries: { name, artifactId?, result }
+  final artifacts = <Map<String, dynamic>>[];
+  // Composite tool executions (implement_feature_and_update_todo) captured during stream
+  final compositeTasks = <Map<String, dynamic>>[];
       String thoughts = '';
+  final List<String> createdArtifactIds = <String>[];
       int aiIndex = 1;
       // Switch placeholder to text mode for live deltas
       setState(() {
@@ -322,6 +477,109 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     'offset': fileEdits.length - 1,
                   });
                 }
+              } else if (name == 'implement_feature_and_update_todo' && result is Map) {
+                // Capture composite tool results in a dedicated array for persistence and inline mapping
+                setState(() {
+                  compositeTasks.add(Map<String, dynamic>.from(result));
+                  final tr = Map<String, dynamic>.from(
+                    _localMessages[aiIndex].toolResults ??
+                        {'fileEdits': fileEdits},
+                  );
+                  tr['compositeTasks'] = List<Map<String, dynamic>>.from(compositeTasks);
+                  _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                    toolResults: tr,
+                  );
+                });
+                if (id != null) {
+                  toolCalls.add({
+                    'index': id,
+                    'name': 'implement_feature_and_update_todo',
+                    'array': 'compositeTasks',
+                    'offset': compositeTasks.length - 1,
+                  });
+                }
+              } else if (name == 'project_card_preview' ||
+                  name == 'todo_list_create' ||
+                  name == 'todo_list_check' ||
+                  name == 'artifact_read') {
+                // Normalize artifact tool results into tool_results.artifacts
+                String? artifactId;
+                if (result is Map<String, dynamic>) {
+                  final rid = result['artifact_id'] ?? result['id'];
+                  if (rid != null) artifactId = rid.toString();
+                }
+                artifacts.add({
+                  'name': name,
+                  if (artifactId != null) 'artifactId': artifactId,
+                  'result': result,
+                });
+                setState(() {
+                  final tr = Map<String, dynamic>.from(
+                    _localMessages[aiIndex].toolResults ??
+                        {'fileEdits': fileEdits},
+                  );
+                  tr['artifacts'] = List<Map<String, dynamic>>.from(artifacts);
+                  _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                    toolResults: tr,
+                  );
+                });
+                if (id != null) {
+                  final call = <String, dynamic>{
+                    'index': id,
+                    'name': name,
+                    'array': 'artifacts',
+                    'offset': artifacts.length - 1,
+                  };
+                  if (artifactId != null) call['artifactId'] = artifactId;
+                  toolCalls.add(call);
+                }
+              } else if (name == 'analyze_document') {
+                // Capture analyze_document results into tool_results.filesAnalyzed
+                // Include both success and error payloads; dedupe by file_url if present
+                setState(() {
+                  final tr = Map<String, dynamic>.from(
+                    _localMessages[aiIndex].toolResults ??
+                        {'fileEdits': fileEdits},
+                  );
+                  final List<Map<String, dynamic>> filesAnalyzed = List<Map<String, dynamic>>.from(
+                    (tr['filesAnalyzed'] as List? ?? const []),
+                  );
+                  Map<String, dynamic> toAdd;
+                  if (result is Map) {
+                    toAdd = Map<String, dynamic>.from(result as Map);
+                  } else {
+                    toAdd = {'status': 'unknown', 'result': result};
+                  }
+                  // Dedupe by file_url or by mime+byte_length
+                  bool isDup = false;
+                  final fu = (toAdd['file_url']?.toString() ?? '').trim();
+                  if (fu.isNotEmpty) {
+                    isDup = filesAnalyzed.any((e) => (e['file_url']?.toString() ?? '') == fu);
+                  } else {
+                    final mt = toAdd['mime_type']?.toString();
+                    final bl = toAdd['byte_length']?.toString();
+                    if (mt != null && bl != null) {
+                      isDup = filesAnalyzed.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
+                    }
+                  }
+                  if (!isDup) {
+                    filesAnalyzed.add(toAdd);
+                    tr['filesAnalyzed'] = filesAnalyzed;
+                    _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+                  }
+                });
+                if (id != null) {
+                  toolCalls.add({
+                    'index': id,
+                    'name': 'analyze_document',
+                    'array': 'filesAnalyzed',
+                    'offset': (() {
+                      final tr = _localMessages[aiIndex].toolResults as Map<String, dynamic>?;
+                      final len = (tr != null && tr['filesAnalyzed'] is List) ? (tr['filesAnalyzed'] as List).length : 1;
+                      return len - 1;
+                    })(),
+                  });
+                }
               }
               break;
             }
@@ -352,6 +610,90 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                 );
               });
             }
+            // Merge any analyze_document results sent at end
+            if (evt['filesAnalyzed'] is List) {
+              setState(() {
+                final tr = Map<String, dynamic>.from(
+                  _localMessages[aiIndex].toolResults ?? {},
+                );
+                final existing = List<Map<String, dynamic>>.from(
+                  (tr['filesAnalyzed'] as List? ?? const []),
+                );
+                final incoming = List<Map<String, dynamic>>.from(
+                  List<dynamic>.from(evt['filesAnalyzed']).map((e) => Map<String, dynamic>.from(e as Map)),
+                );
+                // Dedupe using file_url first, then mime+byte_length
+                bool isDupEntry(Map<String, dynamic> a, Map<String, dynamic> b) {
+                  final au = (a['file_url']?.toString() ?? '').trim();
+                  final bu = (b['file_url']?.toString() ?? '').trim();
+                  if (au.isNotEmpty && bu.isNotEmpty) return au == bu;
+                  final am = a['mime_type']?.toString();
+                  final bm = b['mime_type']?.toString();
+                  final al = a['byte_length']?.toString();
+                  final bl = b['byte_length']?.toString();
+                  if (am != null && bm != null && al != null && bl != null) {
+                    return am == bm && al == bl;
+                  }
+                  return false;
+                }
+                final newOffsets = <int>[];
+                for (final inc in incoming) {
+                  final dup = existing.any((ex) => isDupEntry(ex, inc));
+                  if (!dup) {
+                    existing.add(inc);
+                    newOffsets.add(existing.length - 1);
+                  }
+                }
+                tr['filesAnalyzed'] = existing;
+                _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+                // Add synthetic toolCalls per new offset if missing
+                for (final off in newOffsets) {
+                  final exists = toolCalls.any((c) => c['name'] == 'analyze_document' && c['array'] == 'filesAnalyzed' && c['offset'] == off);
+                  if (!exists) {
+                    toolCalls.add({
+                      'index': (toolCalls.length + 1),
+                      'name': 'analyze_document',
+                      'array': 'filesAnalyzed',
+                      'offset': off,
+                    });
+                  }
+                }
+              });
+            }
+            if (evt['artifactIds'] is List) {
+              createdArtifactIds
+                ..clear()
+                ..addAll(List<dynamic>.from(evt['artifactIds']).map((e) => e.toString()));
+              // Merge artifactIds into artifacts array and toolCalls if missing
+              if (artifacts.isNotEmpty) {
+                // Backfill IDs on artifacts
+                for (int i = 0; i < artifacts.length && i < createdArtifactIds.length; i++) {
+                  final a = Map<String, dynamic>.from(artifacts[i]);
+                  a['artifactId'] ??= createdArtifactIds[i];
+                  artifacts[i] = a;
+                }
+                setState(() {
+                  final tr = Map<String, dynamic>.from(
+                    _localMessages[aiIndex].toolResults ?? {},
+                  );
+                  tr['artifacts'] = List<Map<String, dynamic>>.from(artifacts);
+                  _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                    toolResults: tr,
+                  );
+                });
+                // Backfill IDs in toolCalls
+                for (int i = 0; i < toolCalls.length; i++) {
+                  final c = toolCalls[i];
+                  if (c['array'] == 'artifacts' && c['artifactId'] == null) {
+                    final off = (c['offset'] is int) ? c['offset'] as int : -1;
+                    if (off >= 0 && off < artifacts.length) {
+                      final aid = artifacts[off]['artifactId'];
+                      if (aid != null) toolCalls[i] = {...c, 'artifactId': aid};
+                    }
+                  }
+                }
+              }
+            }
             // Collapse thoughts after stream ends; UI accordion defaults collapsed unless user expands later
             break;
         }
@@ -359,7 +701,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
       // Generate title from final streamed text and create chat
       final chatService = ref.read(chatServiceProvider);
-      final title = await chatService.generateChatTitle(text, finalText);
+  final title = await chatService.generateChatTitle(promptText, finalText);
 
       final chatResponse =
           await client
@@ -377,35 +719,54 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       final sentAtUser = DateTime.now();
       final sentAtAi = sentAtUser.add(const Duration(milliseconds: 10));
 
-      // Sanitize tool_results (strip 'ui') before insert
+      // Sanitize tool_results (strip 'ui') before insert; include filesAnalyzed from streamed tool_results
       final sanitizedToolResults = () {
-        final tr = <String, dynamic>{
-          'fileEdits': fileEdits,
-          if (filesRead.isNotEmpty) 'filesRead': filesRead,
-          if (filesSearched.isNotEmpty) 'filesSearched': filesSearched,
-        };
-        return tr; // no 'ui' here by design
+        final current = _localMessages.length > 1
+            ? (_localMessages[1].toolResults is Map
+                ? Map<String, dynamic>.from(_localMessages[1].toolResults as Map)
+                : <String, dynamic>{})
+            : <String, dynamic>{};
+        if (!current.containsKey('fileEdits')) {
+          current['fileEdits'] = fileEdits;
+        }
+        // Remove UI-only hints
+        current.remove('ui');
+        return current;
       }();
-      await client.from('agent_chat_messages').insert([
-        {
-          'chat_id': newChatId,
-          'sender': 'user',
-          'message_type': 'text',
-          'content': text,
-          'attached_files': attachments,
-          'sent_at': sentAtUser.toIso8601String(),
-        },
-        {
-          'chat_id': newChatId,
-          'sender': 'ai',
-          'message_type': 'text',
-          'content': _localMessages[1].content,
-          'thoughts': thoughts.isNotEmpty ? thoughts : null,
-          'tool_results': sanitizedToolResults,
-          'tool_calls': {'events': toolCalls},
-          'sent_at': sentAtAi.toIso8601String(),
-        },
-      ]);
+      // Insert user message then AI message (select id) to link artifacts
+      await client.from('agent_chat_messages').insert({
+        'chat_id': newChatId,
+        'sender': 'user',
+        'message_type': 'text',
+        'content': promptText,
+        'attached_files': updatedAttachments,
+        'sent_at': sentAtUser.toIso8601String(),
+      });
+      final insertedAi = await client
+          .from('agent_chat_messages')
+          .insert({
+            'chat_id': newChatId,
+            'sender': 'ai',
+            'message_type': 'text',
+            'content': _localMessages[1].content,
+            'thoughts': thoughts.isNotEmpty ? thoughts : null,
+            'tool_results': sanitizedToolResults,
+            'tool_calls': {'events': toolCalls},
+            'sent_at': sentAtAi.toIso8601String(),
+          })
+          .select('id')
+          .single();
+      final String? aiMessageId = (insertedAi as Map<String, dynamic>?)?['id'] as String?;
+      if (aiMessageId != null && createdArtifactIds.isNotEmpty) {
+        for (final aid in createdArtifactIds) {
+          try {
+            await client
+                .from('agent_artifacts')
+                .update({'chat_id': newChatId, 'message_id': aiMessageId})
+                .eq('id', aid);
+          } catch (_) {}
+        }
+      }
 
       // Refresh explorer and chats list
       ref.read(projectFilesProvider(widget.projectId).notifier).fetchFiles();
@@ -468,6 +829,104 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
   void _removeAttachmentByPath(String path) {
     setState(() => _attachedFiles.removeWhere((f) => f['path'] == path));
   }
+
+  Future<void> _pickAndQueueUploads() async {
+    try {
+      final existingUploadCount = _attachedFiles.where((f) => f['bytes'] is Uint8List || f['bucket_url'] != null).length;
+      final remaining = 3 - existingUploadCount;
+      if (remaining <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You can attach up to 3 files.')),
+        );
+        return;
+      }
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: true,
+        type: FileType.custom,
+        allowedExtensions: ['pdf','png','jpg','jpeg','webp','gif','txt','md','markdown','html','htm','xml'],
+      );
+      if (result == null || result.files.isEmpty) return;
+      final files = result.files.take(remaining).toList();
+      if (result.files.length > remaining) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You can attach up to 3 files. Extra files were ignored.')),
+        );
+      }
+      final uploads = <Map<String, dynamic>>[];
+      for (final f in files) {
+        final name = f.name;
+        final bytes = f.bytes;
+        if (bytes == null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not read $name.')),
+          );
+          continue;
+        }
+        final ext = name.split('.').last.toLowerCase();
+        if (!_isAllowedExt(ext)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('upload type not supported')),
+          );
+          continue;
+        }
+        final isImage = ['png','jpg','jpeg','webp','gif'].contains(ext);
+        uploads.add({
+          'type': isImage ? 'img' : 'doc',
+          'name': name,
+          'bytes': bytes,
+          'mime_type': _mimeFromExt(ext),
+          'size': f.size,
+        });
+      }
+      if (uploads.isEmpty) return;
+      setState(() {
+        _attachedFiles = [
+          ..._attachedFiles,
+          ...uploads,
+        ];
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick files: $e')),
+      );
+    }
+  }
+
+  bool _isAllowedExt(String ext) {
+    const allowed = ['pdf','png','jpg','jpeg','webp','gif','txt','md','markdown','html','htm','xml'];
+    return allowed.contains(ext.toLowerCase());
+  }
+
+  String _mimeFromExt(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'webp':
+        return 'image/webp';
+      case 'gif':
+        return 'image/gif';
+      case 'pdf':
+        return 'application/pdf';
+      case 'txt':
+        return 'text/plain';
+      case 'md':
+      case 'markdown':
+        return 'text/markdown';
+      case 'html':
+      case 'htm':
+        return 'text/html';
+      case 'xml':
+        return 'application/xml';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  String _guessMimeFromName(String name) => _mimeFromExt(name.split('.').last);
 
   void _insertMentionAndAttach(Map<String, dynamic> file) {
     // Replace current @query with @file.path
@@ -602,6 +1061,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
               error: (e, s) => const SizedBox.shrink(),
             ),
           ),
+          const SizedBox(width: 4),
+          // Artifacts pill
+          _ArtifactsPillButton(projectId: widget.projectId, chatId: _activeChatId),
           IconButton(
             icon: const Icon(
               Icons.add_circle_outline_rounded,
@@ -792,57 +1254,75 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                       right: 4,
                       bottom: 6,
                     ),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children:
-                          _attachedFiles
-                              .map(
-                                (f) => Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.12),
-                                    ),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: _attachedFiles.map((f) {
+                            final hasPath = f['path'] is String; // code attachment
+                            final isUpload = f['bytes'] is Uint8List || f['bucket_url'] != null;
+                            final isImg = (f['type'] == 'img');
+                            final title = hasPath ? (f['path'] as String) : (f['name'] as String? ?? 'file');
+                            final icon = hasPath
+                                ? Icons.description_outlined
+                                : (isImg ? Icons.image_outlined : Icons.insert_drive_file_outlined);
+                            final pill = Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(icon, color: Colors.white70, size: 14),
+                                  const SizedBox(width: 6),
+                                  ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 200),
+                                    child: Text(title, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
                                   ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () {
+                                      if (hasPath) {
+                                        _removeAttachmentByPath(f['path'] as String);
+                                      } else {
+                                        setState(() => _attachedFiles.remove(f));
+                                      }
+                                    },
+                                    child: const Icon(Icons.close, color: Colors.white60, size: 14),
                                   ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.description_outlined,
-                                        color: Colors.white70,
-                                        size: 14,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        f['path'] as String,
-                                        style: GoogleFonts.poppins(
-                                          color: Colors.white70,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      GestureDetector(
-                                        onTap:
-                                            () => _removeAttachmentByPath(
-                                              f['path'] as String,
-                                            ),
-                                        child: const Icon(
-                                          Icons.close,
-                                          color: Colors.white60,
-                                          size: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                ],
+                              ),
+                            );
+                            if (isUpload && isImg && f['bytes'] is Uint8List) {
+                              return Builder(
+                                builder: (pillCtx) => MouseRegion(
+                                  onEnter: (_) => _showImageHoverOverlayForPill(pillCtx, f['bytes'] as Uint8List),
+                                  onExit: (_) => _removeImageHoverOverlay(),
+                                  child: pill,
                                 ),
-                              )
-                              .toList(),
+                              );
+                            }
+                            return pill;
+                          }).toList(),
+                        ),
+                        // Hover preview rendered in global overlay
+                      ],
+                    ),
+                  ),
+                if (_isUploading)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 6, right: 6, bottom: 4),
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 16, height: 16, child: MiniWave(size: 16)),
+                        const SizedBox(width: 8),
+                        Text('Uploading attachments…', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                      ],
                     ),
                   ),
                 if (_showMentions && mentionResults.isNotEmpty)
@@ -957,7 +1437,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                                 _addAttachments(selected);
                               }
                             } else if (value == 'upload_file') {
-                              // TODO: Implement upload flow later
+                              await _pickAndQueueUploads();
                             }
                           },
                           color: const Color(0xFF1E1E1E),
@@ -1249,6 +1729,44 @@ class AgentMessageBubble extends ConsumerWidget {
               'results': r['results'],
             };
           }
+        } else if (array == 'artifacts' &&
+            offset >= 0 &&
+            (toolResultsMap2['artifacts'] is List)) {
+          final list = List<dynamic>.from(toolResultsMap2['artifacts'] as List);
+          if (offset < list.length) {
+            final r = list[offset];
+            if (r is Map<String, dynamic>) {
+              // We store artifact entries as { name, artifactId?, result }
+              result = r['result'];
+            } else {
+              result = r;
+            }
+          }
+        } else if (array == 'compositeTasks' &&
+            offset >= 0 &&
+            (toolResultsMap2['compositeTasks'] is List)) {
+          final list = List<dynamic>.from(toolResultsMap2['compositeTasks'] as List);
+          if (offset < list.length) {
+            final r = list[offset];
+            if (r is Map<String, dynamic>) {
+              // r is the composite tool result map including edits/task_title/etc.
+              result = r;
+            } else {
+              result = r;
+            }
+          }
+        } else if (array == 'filesAnalyzed' &&
+            offset >= 0 &&
+            (toolResultsMap2['filesAnalyzed'] is List)) {
+          final list = List<dynamic>.from(toolResultsMap2['filesAnalyzed'] as List);
+          if (offset < list.length) {
+            final r = list[offset];
+            if (r is Map<String, dynamic>) {
+              result = r;
+            } else {
+              result = r;
+            }
+          }
         }
         out.add({'id': id ?? out.length + 1, 'name': name, 'result': result});
       }
@@ -1304,6 +1822,7 @@ class AgentMessageBubble extends ConsumerWidget {
                   const SizedBox(height: 8),
                   ...edits.map((e) {
                     final path = (e['path'] as String?) ?? 'unknown';
+                    final isNew = ((e['operation'] as String?) ?? '').toLowerCase() == 'create' || ((e['old_content'] as String?) ?? '').isEmpty;
                     return InkWell(
                       onTap: () {
                         try {
@@ -1326,6 +1845,8 @@ class AgentMessageBubble extends ConsumerWidget {
                         path: path,
                         oldContent: (e['old_content'] as String?) ?? '',
                         newContent: (e['new_content'] as String?) ?? '',
+                        isNew: isNew,
+                        onTap: null,
                       ),
                     );
                   }),
@@ -1386,85 +1907,110 @@ class AgentMessageBubble extends ConsumerWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children:
-                        attached.map((a) {
-                          final path = a['path'] as String? ?? 'unknown';
-                          final content = a['content'] as String? ?? '';
-                          final preview = content
-                              .split('\n')
-                              .take(5)
-                              .join('\n');
-                          return InkWell(
-                            onTap: () {
-                              final files =
-                                  ref
-                                      .read(projectFilesProvider(projectId))
-                                      .files;
-                              final file = files.firstWhere(
-                                (f) => f.path == path,
-                                orElse: () => throw Exception('File not found'),
-                              );
-                              ref
-                                  .read(codeViewProvider.notifier)
-                                  .openFile(file);
-                              _expandFileTreeToPath(ref, projectId, path);
-                              // Optionally navigate to editor tab if needed; Build page layout likely already shows editor
-                            },
-                            child: Container(
-                              width: 320,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.25),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.15),
+                    children: attached.map((a) {
+                      // Code attachment (has 'path' and 'content')
+                      if (a is Map && a['path'] is String && a['content'] is String) {
+                        final path = a['path'] as String;
+                        final content = a['content'] as String? ?? '';
+                        final preview = content.split('\n').take(5).join('\n');
+                        return InkWell(
+                          onTap: () {
+                            final files = ref.read(projectFilesProvider(projectId)).files;
+                            final file = files.firstWhere((f) => f.path == path, orElse: () => throw Exception('File not found'));
+                            ref.read(codeViewProvider.notifier).openFile(file);
+                            _expandFileTreeToPath(ref, projectId, path);
+                          },
+                          child: Container(
+                            width: 320,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.25),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.white.withOpacity(0.15)),
+                            ),
+                            padding: const EdgeInsets.all(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.description_outlined, size: 14, color: Colors.white70),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(path, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              padding: const EdgeInsets.all(10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.description_outlined,
-                                        size: 14,
-                                        color: Colors.white70,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          path,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: GoogleFonts.poppins(
-                                            color: Colors.white70,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                const SizedBox(height: 6),
+                                Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(6)),
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    preview,
+                                    style: GoogleFonts.robotoMono(color: Colors.white.withOpacity(0.9), fontSize: 12, height: 1.4),
                                   ),
-                                  const SizedBox(height: 6),
-                                  Container(
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.3),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    padding: const EdgeInsets.all(8),
-                                    child: Text(
-                                      preview,
-                                      style: GoogleFonts.robotoMono(
-                                        color: Colors.white.withOpacity(0.9),
-                                        fontSize: 12,
-                                        height: 1.4,
-                                      ),
-                                    ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+                      // Uploaded attachment (has 'type' and 'bucket_url')
+                      final isImg = (a['type'] == 'img');
+                      final name = (a['name'] as String?) ?? 'attachment';
+                      final url = (a['bucket_url'] as String?) ?? '';
+                      return InkWell(
+                        onTap: () async {
+                          if (url.isNotEmpty) {
+                            final uri = Uri.parse(url);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                        },
+                        child: Container(
+                          width: isImg ? 340 : 320,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white.withOpacity(0.15)),
+                          ),
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(isImg ? Icons.image_outlined : Icons.insert_drive_file_outlined, size: 14, color: Colors.white70),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(name, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
                                   ),
                                 ],
                               ),
-                            ),
-                          );
-                        }).toList(),
+                              const SizedBox(height: 6),
+                              if (isImg && url.isNotEmpty)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.network(url, height: 160, width: double.infinity, fit: BoxFit.cover),
+                                )
+                              else
+                                Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(6)),
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    url.isNotEmpty ? url : 'No link available',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.robotoMono(color: Colors.white.withOpacity(0.9), fontSize: 12, height: 1.4),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                   const SizedBox(height: 12),
                   const Divider(color: Colors.white24, height: 1),
@@ -1629,6 +2175,269 @@ class _ModePill extends StatelessWidget {
           label,
           style: GoogleFonts.poppins(
             color: Colors.white,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArtifactsPillButton extends StatelessWidget {
+  final String projectId;
+  final String? chatId;
+  const _ArtifactsPillButton({required this.projectId, required this.chatId});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        foregroundColor: Colors.white,
+        backgroundColor: Colors.white.withOpacity(0.06),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      ),
+      icon: const Icon(Icons.storage_rounded, size: 16, color: Colors.white70),
+      label: Text('Artifacts', style: GoogleFonts.poppins(color: Colors.white70)),
+      onPressed: () async {
+        await showDialog(
+          context: context,
+    builder: (ctx) => _ArtifactsDialog(projectId: projectId, chatId: chatId),
+        );
+      },
+    );
+  }
+}
+
+class _ArtifactsDialog extends StatefulWidget {
+  final String projectId;
+  final String? chatId;
+  const _ArtifactsDialog({required this.projectId, required this.chatId});
+
+  @override
+  State<_ArtifactsDialog> createState() => _ArtifactsDialogState();
+}
+
+class _ArtifactsDialogState extends State<_ArtifactsDialog> {
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _rows = const [];
+  bool _chatOnly = true; // default: this chat only
+
+  @override
+  void initState() {
+    super.initState();
+    _fetch();
+  }
+
+  Future<void> _fetch() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final supa = Supabase.instance.client;
+      // If chat-only and there is no chat id, show nothing
+      if (_chatOnly && (widget.chatId == null || widget.chatId!.isEmpty)) {
+        setState(() {
+          _rows = const [];
+          _loading = false;
+        });
+        return;
+     }
+      final table = supa.from('agent_artifacts');
+      var query = table
+          .select('id, artifact_type, data, key, last_modified, chat_id')
+          .eq('project_id', widget.projectId);
+      if (_chatOnly && widget.chatId != null && widget.chatId!.isNotEmpty) {
+  // Safe to use non-null assertion since we checked for null and emptiness above
+  query = query.eq('chat_id', widget.chatId!);
+      }
+      final res = await query.order('last_modified', ascending: false);
+      final list = (res as List)
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      setState(() {
+        _rows = list;
+        _loading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black.withOpacity(0.9),
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        width: 720,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.storage_rounded, color: Colors.white70),
+                const SizedBox(width: 8),
+                Text('Artifacts', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _SmallToggle(
+                        label: 'This chat',
+                        selected: _chatOnly,
+                        onTap: () {
+                          if (!_chatOnly) {
+                            setState(() => _chatOnly = true);
+                            _fetch();
+                          }
+                        },
+                      ),
+                      _SmallToggle(
+                        label: 'All-time',
+                        selected: !_chatOnly,
+                        onTap: () {
+                          if (_chatOnly) {
+                            setState(() => _chatOnly = false);
+                            _fetch();
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: _fetch,
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh, color: Colors.white70),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Close',
+                  icon: const Icon(Icons.close, color: Colors.white70),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            else if (_error != null)
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Text(
+                  _error!,
+                  style: GoogleFonts.poppins(color: Colors.redAccent),
+                ),
+              )
+            else if (_rows.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12.0),
+                child: Text(
+                  'No artifacts yet for this project.',
+                  style: GoogleFonts.poppins(color: Colors.white70),
+                ),
+              )
+            else
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: _rows.map((row) {
+                      final name = _artifactNameFromType(row['artifact_type'] as String?);
+                      final resultPayload = _artifactResultPayload(row);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white.withOpacity(0.10)),
+                        ),
+                        child: AgentToolEventPreviews(events: [
+                          {
+                            'name': name,
+                            'result': resultPayload,
+                          }
+                        ]),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _artifactNameFromType(String? t) {
+    switch (t) {
+      case 'project_card_preview':
+        return 'project_card_preview';
+      case 'todo_list':
+        return 'todo_list_create';
+      default:
+        return 'artifact_read';
+    }
+  }
+
+  dynamic _artifactResultPayload(Map<String, dynamic> row) {
+    final type = row['artifact_type'] as String?;
+    final data = row['data'];
+    switch (type) {
+      case 'project_card_preview':
+        return {'status': 'success', 'card': data};
+      case 'todo_list':
+        return {'status': 'success', 'todo': data, 'artifact_id': row['id']};
+      default:
+        return {'status': 'success', 'data': data, 'id': row['id']};
+    }
+  }
+}
+
+class _SmallToggle extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _SmallToggle({required this.label, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white.withOpacity(0.14) : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.poppins(
+            color: Colors.white,
+            fontSize: 12,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
           ),
         ),
@@ -2042,6 +2851,7 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
               path: path,
               oldContent: oldContent,
               newContent: newContent,
+              isNew: ((result is Map && ((result['old_content'] as String?) ?? '').isEmpty) || (result is Map && ((result['operation'] as String?) ?? '').toLowerCase() == 'create')),
               onTap: () async {
                 // First open the file in the code editor
                 try {
@@ -2107,6 +2917,72 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6.0),
             child: _SearchResultsAccordion(query: query, results: results),
+          );
+        }
+      case 'project_card_preview':
+      case 'todo_list_create':
+      case 'todo_list_check':
+      case 'artifact_read':
+        return AgentToolEventPreviews(events: [
+          {'name': name, 'result': result},
+        ]);
+      case 'analyze_document':
+        // Render using the same preview widget infra
+        return AgentToolEventPreviews(events: [
+          {'name': name, 'result': result},
+        ]);
+      case 'implement_feature_and_update_todo':
+        {
+          final map = (result is Map) ? Map<String, dynamic>.from(result as Map) : <String, dynamic>{};
+          final edits = (map['edits'] is List) ? List<Map<String, dynamic>>.from(map['edits'] as List) : const <Map<String, dynamic>>[];
+          final taskTitle = (map['task_title'] as String?) ?? 'Task';
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.task_alt, color: Color(0xFF2CB67D), size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Completed: $taskTitle',
+                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                for (final e in edits)
+                  Builder(builder: (context) {
+                    final path = (e['path'] as String?) ?? 'unknown';
+                    final oldC = (e['old_content'] as String?) ?? '';
+                    final newC = (e['new_content'] as String?) ?? '';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: DiffPreview(
+                        path: path,
+                        oldContent: oldC,
+                        newContent: newC,
+                        isNew: ((e['operation'] as String?) ?? '').toLowerCase() == 'create' || (oldC.isEmpty),
+                        onTap: () async {
+                          // Try to open file in editor first
+                          try {
+                            final files = ref.read(projectFilesProvider(projectId)).files;
+                            final file = files.firstWhere((f) => f.path == path);
+                            ref.read(codeViewProvider.notifier).openFile(file);
+                            _expandFileTreeToPath(ref, projectId, path);
+                          } catch (_) {}
+                          // Then show diff overlay
+                          ref.read(diffOverlayProvider).showOverlay(path: path, oldContent: oldC, newContent: newC);
+                        },
+                      ),
+                    );
+                  }),
+              ],
+            ),
           );
         }
       default:

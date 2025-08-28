@@ -168,8 +168,8 @@ export const analyzeDocumentTool: FunctionDeclaration = {
   parameters: {
     type: Type.OBJECT,
     properties: {
-      source: { type: Type.STRING, description: "Either 'file_uri' or 'base64'." },
-      file_uri: { type: Type.STRING, description: "Supabase storage public URL or Gemini Files API URI." },
+      source: { type: Type.STRING, description: "Either 'file_uri' or 'base64'. Prefer 'file_uri' as an HTTPS URL to the file (e.g., a signed Supabase Storage URL)." },
+      file_uri: { type: Type.STRING, description: "HTTPS URL to fetch the file from (e.g., Supabase signed URL). The backend will fetch the content from this URL." },
       base64: { type: Type.STRING, description: "Base64 data if provided inline (<=20MB)." },
       mime_type: { type: Type.STRING, description: "MIME type, e.g., application/pdf, image/png." },
       instruction: { type: Type.STRING, description: "Instruction, e.g., 'summarize', 'extract tables', 'Q&A'." },
@@ -371,19 +371,118 @@ export const playgroundReadTools = [
  */
 export const implementFeatureAndUpdateTodoTool: FunctionDeclaration = {
   name: "implement_feature_and_update_todo",
-  description: "Update a canvas file's content and then mark a corresponding task as completed in a stored todo list artifact.",
+  description: "Implement a feature by updating one or more files and then mark the corresponding todo task as completed.",
   parameters: {
     type: Type.OBJECT,
     properties: {
       artifact_id: { type: Type.STRING, description: "ID of the todo list artifact in playground_artifacts." },
       task_id: { type: Type.STRING, description: "ID of the task to mark as done." },
-      path: { type: Type.STRING, description: "Canvas file path to update." },
-      new_content: { type: Type.STRING, description: "New content to write into the canvas file." },
+      path: { type: Type.STRING, description: "File path to update (single-edit fallback)." },
+      new_content: { type: Type.STRING, description: "New content to write into the file (single-edit fallback)." },
+      edits: {
+        type: Type.ARRAY,
+        description: "Optional array of file edits to apply in one call (agent/builder mode).",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            operation: { type: Type.STRING, description: "create | update | delete (default: update)" },
+            path: { type: Type.STRING, description: "Target file path" },
+            new_content: { type: Type.STRING, description: "New content for create/update. Ignored for delete." },
+          },
+        },
+      },
       context: { type: Type.STRING, description: "Optional notes/context about the implementation." },
     },
-    required: ["artifact_id", "task_id", "path", "new_content"],
+    required: ["artifact_id", "task_id"],
   },
 };
 
 // Also export in composites list
 playgroundCompositeTools.push(implementFeatureAndUpdateTodoTool);
+
+/**
+ * Build a dynamic "TOOLBOX & WHEN TO USE" guidance section for system prompts,
+ * based on the provided function declarations (by name).
+ */
+export function buildToolboxGuidance(functionDeclarations: Array<FunctionDeclaration | { name: string }>): string {
+  try {
+    const names = new Set<string>((functionDeclarations || []).map((t: any) => String(t?.name || '').trim()).filter(Boolean));
+
+    const lines: string[] = [];
+    // Codebase (project) tools
+    if (names.has('read_file')) {
+      lines.push("- read_file: Open the exact file by path to inspect its content or count lines. Prefer this before proposing edits. Use max_bytes if supported for huge files.");
+    }
+    if (names.has('search')) {
+      lines.push("- search: Find occurrences across many files when you don't know which file to open. Combine with read_file to inspect specific files. Cap results per file.");
+    }
+    if (names.has('create_file')) {
+      lines.push("- create_file: Add a new file with a full path and complete initial content. Use when introducing new modules/components.");
+    }
+    if (names.has('update_file_content')) {
+      lines.push("- update_file_content: Overwrite an existing file with the full new content (not a diff). Use after reading and planning changes.");
+    }
+    if (names.has('delete_file')) {
+      lines.push("- delete_file: Remove a file only when clearly obsolete. Consider confirming intent if risky.");
+    }
+
+    // Agent/project artifacts
+    if (names.has('project_card_preview')) {
+      lines.push("- project_card_preview: Capture a concise project proposal/plan (name, summary, stack, key_features). Favor web-first stacks unless user requests otherwise.");
+    }
+    if (names.has('todo_list_create')) {
+      lines.push("- todo_list_create: Break work into actionable tasks with stable ids and optional notes; store as an artifact for tracking.");
+    }
+    if (names.has('todo_list_check')) {
+      lines.push("- todo_list_check: Mark specific tasks done in an existing todo artifact (artifact_id required). Optionally add short context.");
+    }
+    if (names.has('artifact_read')) {
+      lines.push("- artifact_read: Retrieve an existing artifact by id to recall prior decisions, plans, or data.");
+    }
+    if (names.has('implement_feature_and_update_todo')) {
+      const canvasContext = names.has('canvas_create_file') || names.has('canvas_update_file_content');
+      if (canvasContext) {
+        lines.push("- implement_feature_and_update_todo: Update a canvas file's content (prefer an existing file for this chat) and then mark a todo task done. Only create a new canvas file if none exists yet in this session.");
+      } else {
+        lines.push("- implement_feature_and_update_todo: Update a file's content and then mark a corresponding todo task as done.");
+      }
+    }
+
+    // Playground canvas + media tools
+    if (names.has('canvas_create_file')) {
+      lines.push("- canvas_create_file: Create a new canvas file in the current Playground chat.");
+    }
+    if (names.has('canvas_update_file_content')) {
+      lines.push("- canvas_update_file_content: Replace the entire content of a canvas file.");
+    }
+    if (names.has('canvas_delete_file')) {
+      lines.push("- canvas_delete_file: Remove a canvas file from this chat.");
+    }
+    if (names.has('canvas_read_file')) {
+      lines.push("- canvas_read_file: Read a canvas file by path.");
+    }
+    if (names.has('canvas_search')) {
+      lines.push("- canvas_search: Search within all canvas files for a query, capped per file.");
+    }
+    if (names.has('canvas_read_file_by_id')) {
+      lines.push("- canvas_read_file_by_id: Read a canvas file using its database UUID.");
+    }
+    if (names.has('create_file_from_template')) {
+      lines.push("- create_file_from_template: Instantiate a new canvas file from a stored template artifact, with optional {{key}} substitutions.");
+    }
+    if (names.has('analyze_document')) {
+      lines.push("- analyze_document: Analyze an attached document/image via URL or base64 and a clear instruction (e.g., summarize, extract tables).");
+    }
+    if (names.has('generate_image')) {
+      lines.push("- generate_image: Produce an image from a text prompt; returns a URL you can reference.");
+    }
+    if (names.has('enhance_image')) {
+      lines.push("- enhance_image: Improve or edit an existing image given an instruction and source.");
+    }
+
+    if (lines.length === 0) return '';
+    return `\n\nTOOLBOX & WHEN TO USE (available this turn):\n${lines.map((l) => `• ${l}`).join('\n')}`;
+  } catch (_) {
+    return '';
+  }
+}

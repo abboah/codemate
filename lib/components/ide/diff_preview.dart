@@ -9,6 +9,7 @@ class DiffPreview extends StatefulWidget {
   final bool collapsible;
   final bool scrollable;
   final VoidCallback? onTap;
+  final bool isNew;
 
   const DiffPreview({
     super.key,
@@ -19,6 +20,7 @@ class DiffPreview extends StatefulWidget {
     this.collapsible = true,
     this.scrollable = false,
     this.onTap,
+    this.isNew = false,
   });
 
   @override
@@ -40,6 +42,8 @@ class _DiffPreviewState extends State<DiffPreview> {
   Widget build(BuildContext context) {
     final lines = _buildUnifiedDiff(widget.oldContent, widget.newContent);
     final visibleLines = _expanded ? lines : lines.take(15).toList();
+    final addedCount = lines.where((l) => l.kind == _DiffKind.add).length;
+    final removedCount = lines.where((l) => l.kind == _DiffKind.remove).length;
 
     final contentWidget = Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
@@ -78,6 +82,48 @@ class _DiffPreviewState extends State<DiffPreview> {
                       fontSize: 12,
                     ),
                   ),
+                ),
+                if (widget.isNew) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.18),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.greenAccent.withOpacity(0.6)),
+                    ),
+                    child: Text(
+                      '(NEW)',
+                      style: GoogleFonts.poppins(
+                        color: Colors.greenAccent.shade200,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 8),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "+$addedCount",
+                      style: GoogleFonts.jetBrainsMono(
+                        color: Colors.greenAccent.shade200,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      "-$removedCount",
+                      style: GoogleFonts.jetBrainsMono(
+                        color: Colors.redAccent.shade200,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

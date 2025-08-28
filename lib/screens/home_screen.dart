@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:math';
 import 'dart:ui';
 import 'package:codemate/components/custom_tooltip.dart';
@@ -17,6 +18,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/providers/playground_provider.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   final UserProfile profile;
@@ -343,9 +345,12 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
   bool _sending = false;
+  bool _uploading = false; // show 'Processing attachments…' while uploading on send
+  OverlayEntry? _imageHoverOverlay;
 
   @override
   void dispose() {
+    try { _imageHoverOverlay?.remove(); } catch (_) {}
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -355,31 +360,248 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     final lower = name.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
     if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+    if (lower.endsWith('.xml')) return 'application/xml';
     if (lower.endsWith('.json')) return 'application/json';
     return 'application/octet-stream';
   }
 
   Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
+    // Match Playground: queue bytes locally; upload on send
+    // Allowed extensions
+    const allowed = {
+      'pdf',
+      'png', 'jpg', 'jpeg', 'webp', 'gif',
+      'txt', 'md', 'markdown', 'html', 'htm', 'xml',
+    };
+
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+      type: FileType.custom,
+      allowedExtensions: allowed.toList(),
+    );
     if (result == null) return;
-    for (final f in result.files) {
+    // Enforce 3-file limit like Playground
+    final remaining = 3 - _attachments.length;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('You can attach up to 3 files.', style: GoogleFonts.poppins()),
+        ),
+      );
+      return;
+    }
+    int rejected = 0;
+    for (final f in result.files.take(remaining)) {
       if (f.bytes == null) continue;
-      final b64 = base64Encode(f.bytes!);
+      final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
+      if (!allowed.contains(ext)) { rejected++; continue; }
       _attachments.add({
-        'base64': b64,
+        'bytes': f.bytes!,
         'mime_type': _guessMime(f.name),
         'file_name': f.name,
       });
+    }
+    if (rejected > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Some files were rejected (unsupported type).', style: GoogleFonts.poppins())),
+      );
     }
     setState(() {});
   }
 
   void _removeAttachmentAt(int index) {
     setState(() => _attachments.removeAt(index));
+  }
+
+  void _removeImageHoverOverlay() {
+    try { _imageHoverOverlay?.remove(); } catch (_) {}
+    _imageHoverOverlay = null;
+  }
+
+  void _showImageHoverOverlayForPill(BuildContext pillContext, String url) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8;
+    if (top < 8) top = topLeft.dy + size.height + 8;
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: left,
+        top: top,
+        width: previewW,
+        height: previewH,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(url, width: previewW, height: previewH, fit: BoxFit.cover),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
+
+  void _showImageHoverOverlayForPillBytes(BuildContext pillContext, List<int> bytes) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8;
+    if (top < 8) top = topLeft.dy + size.height + 8;
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: left,
+        top: top,
+        width: previewW,
+        height: previewH,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  (bytes is List<int>) ? Uint8List.fromList(bytes) : (bytes as Uint8List),
+                  width: previewW,
+                  height: previewH,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
+
+  void _showImageModalBytes(Uint8List bytes, String title) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F1420),
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 840),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  ),
+                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(bytes, fit: BoxFit.contain)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showImageModal(String url, String title) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F1420),
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 840),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  ),
+                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, fit: BoxFit.contain)),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _goToPlayground(BuildContext context) {
@@ -392,17 +614,93 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   void _send(BuildContext context) {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    setState(() => _sending = true);
-    // Kick off the first playground message immediately so it appears when we land there
-    final prov = ref.read(playgroundProvider);
-    final payload = List<Map<String, dynamic>>.from(_attachments);
-    prov.send(text: text, attachments: payload);
-    // Navigate to Playground to view the conversation
-    _goToPlayground(context);
-    // Reset local state
-    _controller.clear();
-    _attachments.clear();
-    setState(() => _sending = false);
+    () async {
+      setState(() => _sending = true);
+      final client = Supabase.instance.client;
+      final List<Map<String, dynamic>> out = [];
+
+      final hasUploadables = _attachments.any((a) => a['bytes'] is Uint8List || a['bytes'] is List<int>);
+      if (hasUploadables) setState(() => _uploading = true);
+
+      // Already-uploaded items (rare in Home after this refactor)
+      for (final a in _attachments.where((a) => a.containsKey('bucket') && a.containsKey('path'))) {
+        final path = a['path'] as String;
+        final signedUrl = await _createSignedUrl(client, path);
+        final bucket = (a['bucket'] as String?) ?? 'user-uploads';
+        out.add({
+          'bucket': bucket,
+          'path': path,
+          'mime_type': a['mime_type'],
+          'file_name': a['file_name'],
+          if (signedUrl != null) 'signedUrl': signedUrl,
+          if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+          if (signedUrl != null) 'uri': signedUrl,
+        });
+      }
+
+      // Items that only have a bucket_url
+      for (final a in _attachments.where((a) => !a.containsKey('path') && (a['bucket_url'] is String))) {
+        final bukUrl = (a['bucket_url'] as String?) ?? '';
+        out.add({
+          'bucket_url': bukUrl,
+          'mime_type': a['mime_type'],
+          'file_name': a['file_name'],
+          if (bukUrl.isNotEmpty) 'uri': bukUrl,
+          if (bukUrl.isNotEmpty) 'signedUrl': bukUrl,
+        });
+      }
+
+      // Upload raw bytes now
+      for (final a in _attachments.where((a) => !(a.containsKey('bucket') && a.containsKey('path')))) {
+        final bytes = a['bytes'];
+        final mime = (a['mime_type'] as String?) ?? 'application/octet-stream';
+        final name = (a['file_name'] as String?) ?? 'file';
+        if (bytes is Uint8List || bytes is List<int>) {
+          try {
+            final data = (bytes is Uint8List) ? bytes : Uint8List.fromList(bytes as List<int>);
+            final folder = 'home/uploads';
+            final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
+            await client.storage.from('user-uploads').uploadBinary(
+              path,
+              data,
+              fileOptions: FileOptions(contentType: mime, upsert: true),
+            );
+            final signedUrl = await _createSignedUrl(client, path);
+            const bucket = 'user-uploads';
+            out.add({
+              'bucket': bucket,
+              'path': path,
+              'mime_type': mime,
+              'file_name': name,
+              if (signedUrl != null) 'signedUrl': signedUrl,
+              if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+              if (signedUrl != null) 'uri': signedUrl,
+            });
+          } catch (e) {
+            // Skip adding the file if upload fails; surface a subtle toast.
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to upload $name', style: GoogleFonts.poppins())),
+            );
+          }
+        }
+      }
+
+      if (hasUploadables) setState(() => _uploading = false);
+
+      final prov = ref.read(playgroundProvider);
+      // Clear UI immediately
+      _controller.clear();
+      _attachments.clear();
+      setState(() {});
+
+      // Fire-and-forget: start sending so it appears when we land on Playground
+      // Provider adds the user/ai temp messages immediately (optimistic).
+      // Don't await to avoid blocking navigation.
+      // ignore: unawaited_futures
+      prov.send(text: text, attachments: out);
+      _goToPlayground(context); // Navigate immediately as usual
+      setState(() => _sending = false);
+    }();
   }
 
   @override
@@ -430,30 +728,62 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                     runSpacing: 6,
                     children: [
                       for (int i = 0; i < _attachments.length; i++)
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: Colors.white.withOpacity(0.12)),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.attach_file, color: Colors.white70, size: 14),
-                              const SizedBox(width: 6),
-                              Text(
-                                (_attachments[i]['file_name'] as String?) ?? 'file',
-                                style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                        Builder(builder: (pillCtx) {
+                          final a = _attachments[i];
+                          final name = a['file_name'] as String? ?? 'file';
+                          final mime = a['mime_type'] as String? ?? 'application/octet-stream';
+                          final isImage = mime.startsWith('image/');
+                          final bytes = a['bytes'] as Uint8List?;
+                          final signedUrl = a['signedUrl'] as String?;
+                          final bucketUrl = a['bucket_url'] as String?;
+                          final url = (signedUrl != null && signedUrl.isNotEmpty)
+                              ? signedUrl
+                              : ((bucketUrl != null && bucketUrl.isNotEmpty) ? bucketUrl : null);
+                          final pill = Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(isImage ? Icons.image_outlined : Icons.attach_file, color: Colors.white70, size: 14),
+                                const SizedBox(width: 6),
+                                Text(name, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                                const SizedBox(width: 8),
+                                GestureDetector(
+                                  onTap: () => _removeAttachmentAt(i),
+                                  child: const Icon(Icons.close, color: Colors.white60, size: 14),
+                                )
+                              ],
+                            ),
+                          );
+                          if (isImage && bytes != null) {
+                            return MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              onEnter: (_) => _showImageHoverOverlayForPillBytes(pillCtx, bytes),
+                              onExit: (_) => _removeImageHoverOverlay(),
+                              child: GestureDetector(
+                                onTap: () => _showImageModalBytes(bytes, name),
+                                child: pill,
                               ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: () => _removeAttachmentAt(i),
-                                child: const Icon(Icons.close, color: Colors.white60, size: 14),
-                              )
-                            ],
-                          ),
-                        ),
+                            );
+                          } else if (isImage && url != null) {
+                            return MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              onEnter: (_) => _showImageHoverOverlayForPill(pillCtx, url),
+                              onExit: (_) => _removeImageHoverOverlay(),
+                              child: GestureDetector(
+                                onTap: () => _showImageModal(url, name),
+                                child: pill,
+                              ),
+                            );
+                          } else {
+                            return pill;
+                          }
+                        }),
                     ],
                   ),
                 ),
@@ -468,7 +798,7 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
                   border: InputBorder.none,
                 ),
-                onSubmitted: (_) => _sending ? null : _send(context),
+                onSubmitted: (_) => (_sending || _uploading) ? null : _send(context),
               ),
               const SizedBox(height: 8),
               // Bottom layer: attach + send row
@@ -477,27 +807,53 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                 children: [
                   Row(children: [
                     IconButton(
-                      onPressed: _pickFiles,
+                      onPressed: (_sending || _uploading) ? null : _pickFiles,
                       icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
                     ),
                   ]),
                   ElevatedButton(
-                    onPressed: _sending ? null : () => _send(context),
+                    onPressed: (_sending || _uploading) ? null : () => _send(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.accent,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       padding: const EdgeInsets.all(12),
                     ),
-                    child: _sending
+                    child: (_sending || _uploading)
                         ? const SizedBox(width: 22, height: 22, child: MiniWave(size: 22))
                         : const Icon(Icons.arrow_upward, color: Colors.white),
                   ),
                 ],
               ),
+              if (_uploading)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Processing attachments…',
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Future<String?> _createSignedUrl(SupabaseClient client, String path) async {
+    try {
+      final dynamic resp = await client.storage.from('user-uploads').createSignedUrl(path, 60 * 60);
+      if (resp is String) return resp;
+      if (resp is Map) {
+        final v1 = resp['signedUrl'];
+        if (v1 is String) return v1;
+        final v2 = resp['signed_url'];
+        if (v2 is String) return v2;
+        final v3 = resp['url'];
+        if (v3 is String) return v3;
+        final data = resp['data'];
+        if (data is Map && data['signedUrl'] is String) return data['signedUrl'] as String;
+      }
+    } catch (_) {}
+    return null;
   }
 }

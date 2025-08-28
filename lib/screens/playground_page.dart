@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:codemate/themes/colors.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
@@ -15,6 +16,7 @@ import 'package:codemate/screens/learn_page.dart';
 import 'package:codemate/widgets/code_block_builder.dart';
 import 'package:codemate/widgets/playground_code_block.dart';
 import 'package:codemate/widgets/tool_event_previews.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PlaygroundPage extends ConsumerStatefulWidget {
   const PlaygroundPage({super.key});
@@ -27,14 +29,21 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
+  bool _uploading = false; // show 'Processing attachments…' while uploading on send
   bool _historyOpen = false;
   final TextEditingController _searchCtrl = TextEditingController();
   int _artifactPreviewIndex = 0;
   final GlobalKey _canvasTitleKey = GlobalKey();
   bool _hoveringCanvasTitle = false;
+  // Composer image hover preview overlay
+  OverlayEntry? _imageHoverOverlay;
 
   @override
   void dispose() {
+    // Ensure any hover overlay is removed
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
     _controller.dispose();
     _focusNode.dispose();
     _searchCtrl.dispose();
@@ -45,11 +54,13 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     final lower = name.toLowerCase();
     if (lower.endsWith('.png')) return 'image/png';
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
     if (lower.endsWith('.txt')) return 'text/plain';
-    if (lower.endsWith('.json')) return 'application/json';
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+    if (lower.endsWith('.xml')) return 'application/xml';
     return 'application/octet-stream';
   }
 
@@ -155,19 +166,61 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   }
 
   Future<void> _pickFiles() async {
+    // Enforce same restrictions as Agent chat: max 3 files, strict types
+    // Allowed extensions
+    const allowed = {
+      'pdf',
+      'png', 'jpg', 'jpeg', 'webp', 'gif',
+      'txt', 'md', 'markdown', 'html', 'htm', 'xml',
+    };
+
     final res = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       withData: true,
+      type: FileType.custom,
+      allowedExtensions: allowed.toList(),
     );
     if (res == null) return;
-    for (final f in res.files) {
+
+    // Apply 3-file total limit
+    int remaining = 3 - _attachments.length;
+    if (remaining <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'You can attach up to 3 files.',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Queue files locally; upload happens on send. Store raw bytes for hover preview.
+    final picked = res.files.take(remaining);
+    int rejected = 0;
+    for (final f in picked) {
       if (f.bytes == null) continue;
-      final base64 = base64Encode(f.bytes!);
+      final ext = f.extension?.toLowerCase() ?? f.name.split('.').last.toLowerCase();
+      if (!allowed.contains(ext)) {
+        rejected++;
+        continue;
+      }
       _attachments.add({
-        'base64': base64,
+        'bytes': f.bytes!,
         'mime_type': _guessMime(f.name),
         'file_name': f.name,
       });
+    }
+    if (rejected > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Some files were rejected (unsupported type).',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
+      );
     }
     setState(() {});
   }
@@ -176,17 +229,319 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     setState(() => _attachments.removeAt(index));
   }
 
+  void _removeImageHoverOverlay() {
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
+    _imageHoverOverlay = null;
+  }
+
+  void _showImageHoverOverlayForPill(BuildContext pillContext, String url) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8; // try above first
+    if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: left,
+        top: top,
+        width: previewW,
+        height: previewH,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  url,
+                  width: previewW,
+                  height: previewH,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
+
+  void _showImageHoverOverlayForPillBytes(BuildContext pillContext, Uint8List bytes) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8; // try above first
+    if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (ctx) => Positioned(
+        left: left,
+        top: top,
+        width: previewW,
+        height: previewH,
+        child: IgnorePointer(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.92),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.12)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.45),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  bytes,
+                  width: previewW,
+                  height: previewH,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
+
+  void _showImageModalBytes(Uint8List bytes, String title) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F1420),
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 840),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(bytes, fit: BoxFit.contain),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  void _showImageModal(String url, String title) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (ctx) => Dialog(
+        backgroundColor: const Color(0xFF0F1420),
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 840),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(url, fit: BoxFit.contain),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _createSignedUrl(SupabaseClient client, String path) async {
+    try {
+      final dynamic resp = await client.storage.from('user-uploads').createSignedUrl(path, 60 * 60);
+      if (resp is String) return resp;
+      if (resp is Map) {
+        final v1 = resp['signedUrl'];
+        if (v1 is String) return v1;
+        final v2 = resp['signed_url'];
+        if (v2 is String) return v2;
+        final v3 = resp['url'];
+        if (v3 is String) return v3;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    final prov = ref.read(playgroundProvider);
-    prov.send(
-      text: text,
-      attachments: List<Map<String, dynamic>>.from(_attachments),
-    );
-    _controller.clear();
-    _attachments.clear();
-    setState(() {});
+    () async {
+      final client = Supabase.instance.client;
+      final List<Map<String, dynamic>> out = [];
+
+      // Only show 'Processing attachments…' when actually uploading bytes
+      final hasUploadables = _attachments.any((a) => a['bytes'] is Uint8List);
+      if (hasUploadables) setState(() => _uploading = true);
+
+      // First handle any already-uploaded items (no uploading spinner)
+      for (final a in _attachments.where((a) => a.containsKey('bucket') && a.containsKey('path'))) {
+        final path = a['path'] as String;
+        final signedUrl = await _createSignedUrl(client, path);
+        final bucket = (a['bucket'] as String?) ?? 'user-uploads';
+        out.add({
+          'bucket': bucket,
+          'path': path,
+          'mime_type': a['mime_type'],
+          'file_name': a['file_name'],
+          if (signedUrl != null) 'signedUrl': signedUrl,
+          // Prefer signedUrl for immediate use; backend will add bucket_url when persisting
+          if (signedUrl != null) 'uri': signedUrl,
+        });
+      }
+
+      // Handle attachments that only have a bucket_url (no path available)
+      for (final a in _attachments.where((a) => !a.containsKey('path') && (a['bucket_url'] is String))) {
+        final bukUrl = (a['bucket_url'] as String?) ?? '';
+        out.add({
+          'bucket_url': bukUrl,
+          'mime_type': a['mime_type'],
+          'file_name': a['file_name'],
+          if (bukUrl.isNotEmpty) 'uri': bukUrl,
+          if (bukUrl.isNotEmpty) 'signedUrl': bukUrl,
+        });
+      }
+
+      // Then upload any raw bytes
+      for (final a in _attachments.where((a) => !(a.containsKey('bucket') && a.containsKey('path')))) {
+        final bytes = a['bytes'];
+        final mime = (a['mime_type'] as String?) ?? 'application/octet-stream';
+        final name = (a['file_name'] as String?) ?? 'file';
+        if (bytes is Uint8List) {
+          try {
+            final folder = 'playground/uploads';
+            final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
+            await client.storage.from('user-uploads').uploadBinary(
+              path,
+              bytes,
+              fileOptions: FileOptions(contentType: mime, upsert: true),
+            );
+            final signedUrl = await _createSignedUrl(client, path);
+            out.add({
+              'bucket': 'user-uploads',
+              'path': path,
+              'mime_type': mime,
+              'file_name': name,
+              if (signedUrl != null) 'signedUrl': signedUrl,
+              if (signedUrl != null) 'uri': signedUrl,
+            });
+          } catch (_) {
+            // Do not include raw data in attached_files for consistency; surface an error instead
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to upload "$name"', style: GoogleFonts.poppins())),
+              );
+            }
+          }
+        }
+      }
+
+      // Uploading phase complete
+      if (hasUploadables) setState(() => _uploading = false);
+
+      final prov = ref.read(playgroundProvider);
+      // Clear the input UI immediately upon dispatch
+      _controller.clear();
+      _attachments.clear();
+      setState(() {});
+
+      await prov.send(
+        text: text,
+        attachments: out,
+      );
+    }();
   }
 
   void _showArtifactPreview(int index) {
@@ -756,9 +1111,15 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               onPickFiles: _pickFiles,
               onRemoveAttachmentAt: _removeAttachmentAt,
               onSend: _send,
+              uploading: _uploading,
               sending:
                   ref.watch(playgroundProvider).sending ||
                   ref.watch(playgroundProvider).streaming,
+              onHoverImageEnterUrl: _showImageHoverOverlayForPill,
+              onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
+              onHoverImageExit: _removeImageHoverOverlay,
+              onOpenImageModalUrl: _showImageModal,
+              onOpenImageModalBytes: _showImageModalBytes,
             ),
           ),
         ],
@@ -835,49 +1196,78 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
-                                children:
-                                    m.attachments.map((a) {
-                                      final name =
-                                          a['file_name'] as String? ?? 'file';
-                                      final mime =
-                                          a['mime_type'] as String? ??
-                                          'application/octet-stream';
-                                      return Container(
+                                children: m.attachments.map((a) {
+                                  final name = a['file_name'] as String? ?? 'file';
+                                  final mime = a['mime_type'] as String? ?? 'application/octet-stream';
+                                  final signedUrl = a['signedUrl'] as String?;
+                                  final uri = a['uri'] as String?;
+                                  final bucketUrl = a['bucket_url'] as String?;
+                                  final isImage = mime.startsWith('image/');
+                                  final url = (signedUrl != null && signedUrl.isNotEmpty)
+                                      ? signedUrl
+                                      : ((uri != null && uri.isNotEmpty)
+                                          ? uri
+                                          : ((bucketUrl != null && bucketUrl.isNotEmpty) ? bucketUrl : null));
+                                  if (isImage && (url != null)) {
+                                    return InkWell(
+                                      onTap: () => _showImageModal(url, name),
+                                      child: Container(
+                                        width: 260,
                                         decoration: BoxDecoration(
                                           color: Colors.black.withOpacity(0.25),
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withOpacity(
-                                              0.12,
-                                            ),
-                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(color: Colors.white.withOpacity(0.12)),
                                         ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
+                                        padding: const EdgeInsets.all(8),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            const Icon(
-                                              Icons.attach_file,
-                                              color: Colors.white70,
-                                              size: 14,
+                                            Row(
+                                              children: [
+                                                const Icon(Icons.image_outlined, color: Colors.white70, size: 14),
+                                                const SizedBox(width: 6),
+                                                Expanded(
+                                                  child: Text(
+                                                    name,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              '$name · $mime',
-                                              style: GoogleFonts.poppins(
-                                                color: Colors.white70,
-                                                fontSize: 12,
+                                            const SizedBox(height: 6),
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(6),
+                                              child: Image.network(
+                                                url,
+                                                height: 140,
+                                                width: double.infinity,
+                                                fit: BoxFit.cover,
                                               ),
                                             ),
                                           ],
                                         ),
-                                      );
-                                    }).toList(),
+                                      ),
+                                    );
+                                  }
+                                  // Non-image or missing URL fallback to pill
+                                  return Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.25),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.attach_file, color: Colors.white70, size: 14),
+                                        const SizedBox(width: 6),
+                                        Text('$name · $mime', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                                      ],
+                                    ),
+                                  );
+                                }).toList(),
                               ),
                               const SizedBox(height: 10),
                             ],
@@ -995,6 +1385,12 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               onPickFiles: _pickFiles,
               onRemoveAttachmentAt: _removeAttachmentAt,
               onSend: _send,
+              uploading: _uploading,
+              onHoverImageExit: _removeImageHoverOverlay,
+              onHoverImageEnterUrl: _showImageHoverOverlayForPill,
+              onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
+              onOpenImageModalUrl: _showImageModal,
+              onOpenImageModalBytes: _showImageModalBytes,
               sending: state.sending || state.streaming,
             ),
           ),
@@ -1094,6 +1490,14 @@ class _InputBar extends StatelessWidget {
   final void Function(int index) onRemoveAttachmentAt;
   final VoidCallback onSend;
   final bool sending;
+  final bool uploading;
+  // URL preview handlers
+  final void Function(String url, String title)? onOpenImageModalUrl;
+  final void Function(BuildContext pillContext, String url)? onHoverImageEnterUrl;
+  // Bytes preview handlers (pre-upload)
+  final void Function(Uint8List bytes, String title)? onOpenImageModalBytes;
+  final void Function(BuildContext pillContext, Uint8List bytes)? onHoverImageEnterBytes;
+  final VoidCallback? onHoverImageExit;
 
   const _InputBar({
     required this.controller,
@@ -1103,133 +1507,153 @@ class _InputBar extends StatelessWidget {
     required this.onRemoveAttachmentAt,
     required this.onSend,
     required this.sending,
+    required this.uploading,
+    this.onOpenImageModalUrl,
+    this.onHoverImageEnterUrl,
+    this.onOpenImageModalBytes,
+    this.onHoverImageEnterBytes,
+    this.onHoverImageExit,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.06),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (attachments.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: 8.0,
-                      left: 6,
-                      right: 6,
-                    ),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (int i = 0; i < attachments.length; i++)
-                          Container(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top: attachments chips + text field
+              if (attachments.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8.0, left: 4, right: 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (int i = 0; i < attachments.length; i++)
+                        Builder(builder: (pillCtx) {
+                          final att = attachments[i];
+                          final name = att['file_name'] as String? ?? 'file';
+                          final mime = att['mime_type'] as String? ?? 'application/octet-stream';
+                          final isImage = mime.startsWith('image/');
+                          final bytes = att['bytes'];
+                          final signedUrl = att['signedUrl'] as String?;
+                          final uri = att['uri'] as String?;
+                          final bucketUrl = att['bucket_url'] as String?;
+                          final url = signedUrl?.isNotEmpty == true
+                              ? signedUrl
+                              : (uri?.isNotEmpty == true ? uri : (bucketUrl?.isNotEmpty == true ? bucketUrl : null));
+                          final pill = Container(
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.12),
-                              ),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
                             ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                const Icon(
-                                  Icons.attach_file,
-                                  color: Colors.white70,
-                                  size: 14,
-                                ),
+                                Icon(isImage ? Icons.image_outlined : Icons.attach_file, color: Colors.white70, size: 14),
                                 const SizedBox(width: 6),
-                                Text(
-                                  attachments[i]['file_name'] ?? 'file',
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.white70,
-                                    fontSize: 12,
-                                  ),
-                                ),
+                                Text(name, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
                                 const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () => onRemoveAttachmentAt(i),
-                                  child: const Icon(
-                                    Icons.close,
-                                    color: Colors.white60,
-                                    size: 14,
-                                  ),
-                                ),
+                                  child: const Icon(Icons.close, color: Colors.white60, size: 14),
+                                )
                               ],
                             ),
-                          ),
-                      ],
-                    ),
+                          );
+                          if (isImage) {
+                            // Pre-upload bytes hover/modal
+                            if (bytes is Uint8List) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter: (_) => onHoverImageEnterBytes?.call(pillCtx, bytes),
+                                onExit: (_) => onHoverImageExit?.call(),
+                                child: GestureDetector(
+                                  onTap: () => onOpenImageModalBytes?.call(bytes, name),
+                                  child: pill,
+                                ),
+                              );
+                            }
+                            // Post-upload URL hover/modal
+                            if (url != null && url.isNotEmpty) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter: (_) => onHoverImageEnterUrl?.call(pillCtx, url),
+                                onExit: (_) => onHoverImageExit?.call(),
+                                child: GestureDetector(
+                                  onTap: () => onOpenImageModalUrl?.call(url, name),
+                                  child: pill,
+                                ),
+                              );
+                            }
+                          }
+                          return pill;
+                        }),
+                    ],
                   ),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: onPickFiles,
-                      icon: const Icon(
-                        Icons.add_circle_outline,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    Expanded(
-                      child: TextField(
-                        controller: controller,
-                        focusNode: focusNode,
-                        maxLines: 6,
-                        minLines: 1,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          hintText: 'Message Robin…',
-                          hintStyle: TextStyle(
-                            color: Colors.white.withOpacity(0.55),
-                          ),
-                          border: InputBorder.none,
-                        ),
-                        onSubmitted: (_) => sending ? null : onSend(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: sending ? null : onSend,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.all(12),
-                      ),
-                      child:
-                          sending
-                              ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: MiniWave(size: 22),
-                              )
-                              : const Icon(
-                                Icons.arrow_upward,
-                                color: Colors.white,
-                              ),
-                    ),
-                  ],
                 ),
-              ],
-            ),
+              TextField(
+                controller: controller,
+                focusNode: focusNode,
+                maxLines: 6,
+                minLines: 1,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Ask or start building…',
+                  hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => (sending || uploading) ? null : onSend(),
+              ),
+              const SizedBox(height: 8),
+              // Bottom: attach + send buttons
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(children: [
+                    IconButton(
+                      onPressed: (sending || uploading) ? null : onPickFiles,
+                      icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+                    ),
+                  ]),
+                  ElevatedButton(
+                    onPressed: (sending || uploading) ? null : onSend,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.all(12),
+                    ),
+                    child: (sending || uploading)
+                        ? Row(
+                            children: const [
+                              SizedBox(width: 22, height: 22, child: MiniWave(size: 22)),
+                            ],
+                          )
+                        : const Icon(Icons.arrow_upward, color: Colors.white),
+                  ),
+                ],
+              ),
+              if (uploading)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Processing attachments…',
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
