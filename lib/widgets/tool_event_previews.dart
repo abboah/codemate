@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/services.dart';
+// Flutter material import is required for clipboard functionality and UI widgets.
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 

@@ -223,7 +223,7 @@ serve(async (req) => {
       const chunkSize = 0x8000; // 32KB chunks to avoid call stack overflow
       for (let i = 0; i < bytes.length; i += chunkSize) {
         const sub = bytes.subarray(i, i + chunkSize);
-        binary += String.fromCharCode(...sub);
+        binary += String.fromCharCode.apply(null, Array.from(sub) as any);
       }
       return btoa(binary);
     }
