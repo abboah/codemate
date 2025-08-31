@@ -196,3 +196,105 @@ class _ShimmerPainter extends CustomPainter {
     return oldDelegate.progress != progress || oldDelegate.borderRadius != borderRadius;
   }
 }
+
+/// A dedicated, refined loader for "thinking" states in chat.
+/// Shows 4 softly glowing dots with a staggered vertical bounce and shimmer.
+class ThinkingDotsLoader extends StatefulWidget {
+  final double size; // overall width; dot size scales relatively
+  final Color? color; // base color for glow
+
+  const ThinkingDotsLoader({super.key, this.size = 48, this.color});
+
+  @override
+  State<ThinkingDotsLoader> createState() => _ThinkingDotsLoaderState();
+}
+
+class _ThinkingDotsLoaderState extends State<ThinkingDotsLoader>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final List<Animation<double>> _bounces;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+
+    // Create 4 staggered intervals for bounce animations
+    _bounces = List.generate(4, (i) {
+      final start = i * 0.12;
+      final end = start + 0.6; // overlap a bit for smoothness
+      return CurvedAnimation(
+        parent: _controller,
+        curve: Interval(start, end.clamp(0.0, 1.0), curve: Curves.easeInOut),
+      );
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  final base = widget.color ?? AppColors.darkerAccent;
+  final double dot = math.max(4.0, math.min(10.0, widget.size / 8));
+    final spacing = dot * 1.5;
+    final totalWidth = dot * 4 + spacing * 3;
+    return SizedBox(
+      width: totalWidth,
+      height: dot * 4,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: List.generate(4, (i) => _buildDot(base, dot, _bounces[i])).separated(const SizedBox(width: 8)),
+      ),
+    );
+  }
+
+  Widget _buildDot(Color base, double size, Animation<double> a) {
+    return AnimatedBuilder(
+      animation: a,
+      builder: (context, child) {
+        // y goes up and down; also modulate opacity
+        final y = (-(a.value * 1.0 - 0.5).abs() + 0.5) * 6.0; // 0..6..0
+        final op = 0.5 + 0.5 * (a.value);
+        final color = base.withOpacity(op.clamp(0.3, 1.0));
+        return Transform.translate(
+          offset: Offset(0, -y),
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  color.withOpacity(0.9),
+                  color.withOpacity(0.3),
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(color: color.withOpacity(0.35), blurRadius: 8, spreadRadius: 0.5),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+extension on List<Widget> {
+  List<Widget> separated(Widget separator) {
+    if (isEmpty) return this;
+    final out = <Widget>[];
+    for (var i = 0; i < length; i++) {
+      out.add(this[i]);
+      if (i != length - 1) out.add(separator);
+    }
+    return out;
+  }
+}

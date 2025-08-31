@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 const Color seaBlue = Color(0xFF006994);
 
@@ -280,13 +281,78 @@ class MessageBubble extends StatelessWidget {
                   bottomRight: isUser ? const Radius.circular(4) : const Radius.circular(18),
                 ),
               ),
-              child: Text(
-                message.content,
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  height: 1.5,
-                ),
-              ),
+              child: isUser
+                  ? Text(
+                      message.content,
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        height: 1.5,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: message.content,
+                      styleSheet: MarkdownStyleSheet(
+                        p: GoogleFonts.poppins(
+                          color: Colors.white,
+                          height: 1.5,
+                          fontSize: 14,
+                        ),
+                        strong: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                        em: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontStyle: FontStyle.italic,
+                          fontSize: 14,
+                        ),
+                        code: GoogleFonts.jetBrainsMono(
+                          color: Colors.white,
+                          backgroundColor: Colors.white.withOpacity(0.1),
+                          fontSize: 13,
+                        ),
+                        codeblockDecoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+                        ),
+                        codeblockPadding: const EdgeInsets.all(12),
+                        h1: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                        ),
+                        h2: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                        h3: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                        listBullet: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                        blockquoteDecoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(4),
+                          border: const Border(
+                            left: BorderSide(
+                              color: Colors.white38,
+                              width: 3,
+                            ),
+                          ),
+                        ),
+                        blockquotePadding: const EdgeInsets.all(12),
+                      ),
+                      selectable: true,
+                    ),
             ),
           ),
           if (isUser) const SizedBox(width: 12),

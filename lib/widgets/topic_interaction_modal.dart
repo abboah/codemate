@@ -15,6 +15,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
+import 'package:codemate/themes/colors.dart';
 
 enum NotesScreenState { fetching, generating, loaded, error }
 
@@ -112,43 +113,123 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 800),
+          constraints: const BoxConstraints(maxWidth: 880),
           child: Stack(
             children: [
+              // Dark glassy container with elegant styling
               Container(
                 padding: const EdgeInsets.all(32),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1A1A1A).withOpacity(0.85),
                   borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      const Color(0xFF0A0A0D).withOpacity(0.95),
+                      const Color(0xFF121216).withOpacity(0.92),
+                      const Color(0xFF1A1A20).withOpacity(0.90),
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.6),
+                      blurRadius: 32,
+                      offset: const Offset(0, 16),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.topic.title,
-                      style: GoogleFonts.poppins(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                const Color(0xFF667eea),
+                                const Color(0xFF764ba2),
+                              ],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF667eea).withOpacity(0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 24),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.topic.title,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Interactive Learning Session',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
                     _buildActionGrid(),
-                    const SizedBox(height: 32),
-                    Expanded(
-                      child: _buildNotesSection(),
-                    ),
+                    const SizedBox(height: 28),
+                    Expanded(child: _buildNotesSection()),
                   ],
                 ),
               ),
               Positioned(
-                top: 16,
-                right: 16,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.of(context).pop(),
+                top: 12,
+                right: 12,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ),
               ),
             ],
@@ -180,6 +261,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
             );
           },
           isBlurred: !notesExist,
+          gradientColors: const [Color(0xFF667eea), Color(0xFF764ba2)],
         ),
         _buildActionButton(
           icon: Icons.quiz_outlined,
@@ -195,6 +277,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
             );
           },
           isBlurred: !isEnrolled || !notesExist,
+          gradientColors: const [Color(0xFF7F00FF), Color(0xFFE100FF)],
         ),
         _buildActionButton(
           icon: Icons.chat_bubble_outline,
@@ -210,6 +293,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
             );
           },
           isBlurred: !isEnrolled || !notesExist,
+          gradientColors: const [Color(0xFF00C9FF), Color(0xFF92FE9D)],
         ),
         _buildActionButton(
           icon: Icons.lightbulb_outline,
@@ -220,6 +304,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
               builder: (context) => FunFactModal(topic: widget.topic),
             );
           },
+          gradientColors: const [Color(0xFFFC466B), Color(0xFF3F5EFB)],
         ),
         _buildActionButton(
           icon: Icons.construction_outlined,
@@ -230,6 +315,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
               builder: (context) => SuggestedProjectsModal(topic: widget.topic),
             );
           },
+          gradientColors: const [Color(0xFFFFAF7B), Color(0xFFD76D77), Color(0xFF3A1C71)],
         ),
         _buildActionButton(
           icon: Icons.fitness_center_outlined,
@@ -240,6 +326,7 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
               builder: (context) => PracticeProblemModal(topic: widget.topic),
             );
           },
+          gradientColors: const [Color(0xFF11998e), Color(0xFF38ef7d)],
         ),
       ],
     );
@@ -274,8 +361,23 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
         width: double.infinity,
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.2),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(0.08),
+              Colors.white.withOpacity(0.03),
+            ],
+          ),
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -321,38 +423,149 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
     required VoidCallback onTap,
     bool isBlurred = false,
     bool isLoading = false,
+    required List<Color> gradientColors,
   }) {
-    return InkWell(
+    // Colorful, unique professional action tiles
+    return _ActionTile(
+      icon: icon,
+      label: label,
       onTap: isBlurred || isLoading ? null : onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Opacity(
-        opacity: isBlurred ? 0.5 : 1.0,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+      disabled: isBlurred,
+      loading: isLoading,
+      gradientColors: gradientColors,
+    );
+  }
+}
+
+class _ActionTile extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final bool disabled;
+  final bool loading;
+  final List<Color> gradientColors;
+
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    this.onTap,
+    this.disabled = false,
+    this.loading = false,
+    required this.gradientColors,
+  });
+
+  @override
+  State<_ActionTile> createState() => _ActionTileState();
+}
+
+class _ActionTileState extends State<_ActionTile> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tileColor = widget.disabled
+        ? Colors.white.withOpacity(0.02)
+        : Colors.white.withOpacity(0.06);
+    final borderColor = widget.disabled
+        ? Colors.white.withOpacity(0.06)
+        : Colors.white.withOpacity(0.12);
+    final iconGradient = widget.disabled 
+        ? widget.gradientColors.map((c) => c.withOpacity(0.3)).toList()
+        : widget.gradientColors;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 160),
+        scale: _hovered && widget.onTap != null ? 1.04 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                tileColor,
+                Colors.white.withOpacity(0.02),
+              ],
+            ),
+            boxShadow: _hovered && widget.onTap != null
+                ? [
+                    BoxShadow(
+                      color: iconGradient.first.withOpacity(0.3),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 2,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
           ),
-          child: Center(
-            child: isLoading
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        label,
-                        style: GoogleFonts.poppins(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: widget.onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              child: Center(
+                child: widget.loading
+                    ? SizedBox(
+                        height: 22, 
+                        width: 22, 
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(iconGradient.first),
                         ),
+                      )
+                    : Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: iconGradient,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: iconGradient.first.withOpacity(0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(widget.icon, color: Colors.white, size: 16),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.label,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white.withOpacity(widget.disabled ? 0.5 : 0.9),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+              ),
+            ),
           ),
         ),
       ),

@@ -140,7 +140,7 @@ class PlaygroundState extends ChangeNotifier {
       PlaygroundMessage(
         id: aiId,
         sender: 'ai',
-        content: 'Thinking…',
+        content: '',
         sentAt: DateTime.now(),
       ),
     );
