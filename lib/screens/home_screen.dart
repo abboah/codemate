@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:math';
 import 'dart:ui';
@@ -85,8 +84,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final coursesCount = ref.watch(coursesProvider).enrolledCoursesCount;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Row(
+      backgroundColor: Colors.transparent,
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF0A0A0D),
+              Color(0xFF121216),
+              Color(0xFF1A1A20),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Row(
         children: [
           PremiumSidebar(
             items: [
@@ -114,21 +126,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       children: [
                         _buildTopBar(context, initials, widget.profile.fullName),
                         Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildGreeting(widget.profile.username),
-                              const SizedBox(height: 40),
-                              _buildActionButtons(context, projectsCount, coursesCount),
-                              const SizedBox(height: 28),
-                              Align(
-                                alignment: Alignment.center,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.3),
-                                  child: _HomeInputBar(),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 80), // Moves content up by adding bottom padding
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                _buildGreeting(widget.profile.username),
+                                const SizedBox(height: 40),
+                                _buildActionButtons(context, projectsCount, coursesCount),
+                                const SizedBox(height: 28),
+                                Align(
+                                  alignment: Alignment.center,
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.3),
+                                    child: _HomeInputBar(),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -139,27 +154,110 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
 
   Widget _buildGlowEffect(BuildContext context) {
-    return Positioned(
-      top: MediaQuery.of(context).size.height * 0.1,
-      left: -100,
-      child: Container(
-        width: 400,
-        height: 400,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: RadialGradient(
-            colors: [
-              AppColors.accent.withOpacity(0.3),
-              Colors.black.withOpacity(0.0),
-            ],
+    final screenSize = MediaQuery.of(context).size;
+    return Stack(
+      children: [
+        // Primary accent glow - top left
+        Positioned(
+          top: screenSize.height * 0.15,
+          left: -150,
+          child: Container(
+            width: 500,
+            height: 500,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AppColors.accent.withOpacity(0.25),
+                  AppColors.accent.withOpacity(0.08),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.4, 1.0],
+              ),
+            ),
           ),
         ),
-      ),
+        // Secondary purple glow - top right
+        Positioned(
+          top: screenSize.height * 0.1,
+          right: -200,
+          child: Container(
+            width: 600,
+            height: 600,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFF7F5AF0).withOpacity(0.18),
+                  const Color(0xFF9D4EDD).withOpacity(0.06),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+            ),
+          ),
+        ),
+        // Tertiary blue glow - bottom left
+        Positioned(
+          bottom: screenSize.height * 0.2,
+          left: -100,
+          child: Container(
+            width: 400,
+            height: 400,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  const Color(0xFF3B82F6).withOpacity(0.15),
+                  const Color(0xFF1E40AF).withOpacity(0.05),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.6, 1.0],
+              ),
+            ),
+          ),
+        ),
+        // Ambient center glow - very subtle
+        Positioned(
+          top: screenSize.height * 0.3,
+          left: screenSize.width * 0.3,
+          child: Container(
+            width: 300,
+            height: 300,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  Colors.white.withOpacity(0.03),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 1.0],
+              ),
+            ),
+          ),
+        ),
+        // Gradient overlay for depth
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.black.withOpacity(0.1),
+                Colors.black.withOpacity(0.4),
+                Colors.black.withOpacity(0.6),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -13,8 +13,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:codemate/providers/playground_provider.dart';
 import 'package:codemate/screens/build_page.dart';
 import 'package:codemate/screens/learn_page.dart';
-import 'package:codemate/widgets/code_block_builder.dart';
 import 'package:codemate/widgets/playground_code_block.dart';
+import 'package:codemate/widgets/scroll_to_bottom_button.dart';
 import 'package:codemate/widgets/tool_event_previews.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -30,13 +30,24 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
   bool _uploading = false; // show 'Processing attachments…' while uploading on send
-  bool _historyOpen = false;
-  final TextEditingController _searchCtrl = TextEditingController();
   int _artifactPreviewIndex = 0;
-  final GlobalKey _canvasTitleKey = GlobalKey();
-  bool _hoveringCanvasTitle = false;
   // Composer image hover preview overlay
   OverlayEntry? _imageHoverOverlay;
+  // Scroll controller for conversation and scroll-to-bottom button
+  final ScrollController _conversationScrollController = ScrollController();
+  bool _showScrollToBottom = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Preload chats so the sidebar history shows up immediately on Playground
+    Future.microtask(() {
+      try { ref.read(playgroundProvider).fetchChats(); } catch (_) {}
+    });
+    
+    // Add scroll listener for scroll-to-bottom button
+    _conversationScrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
@@ -46,9 +57,35 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     } catch (_) {}
     _controller.dispose();
     _focusNode.dispose();
-    _searchCtrl.dispose();
+    _conversationScrollController.dispose();
     super.dispose();
   }
+
+  void _onScroll() {
+    final isAtBottom = _conversationScrollController.offset >= 
+        _conversationScrollController.position.maxScrollExtent - 100;
+    
+    // Show button when not at bottom and has some content to scroll
+    final shouldShow = !isAtBottom && _conversationScrollController.position.maxScrollExtent > 200;
+    
+    if (shouldShow != _showScrollToBottom) {
+      setState(() {
+        _showScrollToBottom = shouldShow;
+      });
+    }
+  }
+
+  void _scrollToBottom() {
+    _conversationScrollController.animateTo(
+      _conversationScrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  static const Set<String> _allowedExts = {
+    'png','jpg','jpeg','webp','gif','pdf','md','markdown','txt','html','htm','xml'
+  };
 
   String _guessMime(String name) {
     final lower = name.toLowerCase();
@@ -64,148 +101,28 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     return 'application/octet-stream';
   }
 
-  Widget _buildHistoryOverlay(BuildContext context) {
-    if (!_historyOpen) return const SizedBox.shrink();
-    final chats = ref.watch(playgroundProvider).chats;
-    final q = _searchCtrl.text.trim().toLowerCase();
-    final filtered =
-        q.isEmpty
-            ? chats
-            : chats
-                .where(
-                  (c) =>
-                      (c['title'] as String? ?? '').toLowerCase().contains(q),
-                )
-                .toList();
-
-    return Positioned(
-      top: 0,
-      right: 0,
-      bottom: 0,
-      width: 380,
-      child: Material(
-        color: const Color(0xFF17171C).withOpacity(0.98),
-        elevation: 20,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 14, 8, 10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchCtrl,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Colors.white70,
-                        ),
-                        hintText: 'Search conversations',
-                        hintStyle: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.06),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-                        ),
-                        isDense: true,
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Close',
-                    onPressed: () => setState(() => _historyOpen = false),
-                    icon: const Icon(Icons.close, color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(color: Colors.white12, height: 1),
-            Expanded(
-              child:
-                  filtered.isEmpty
-                      ? Center(
-                        child: Text(
-                          'No conversations',
-                          style: GoogleFonts.poppins(color: Colors.white70),
-                        ),
-                      )
-                      : ListView.builder(
-                        itemCount: filtered.length,
-                        itemBuilder: (ctx, i) {
-                          final c = filtered[i];
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.chat_bubble_outline,
-                              color: Colors.white70,
-                            ),
-                            title: Text(
-                              c['title'] ?? 'Untitled',
-                              style: GoogleFonts.poppins(color: Colors.white),
-                            ),
-                            onTap: () async {
-                              await ref
-                                  .read(playgroundProvider)
-                                  .loadChat(c['id'] as String);
-                              setState(() => _historyOpen = false);
-                            },
-                          );
-                        },
-                      ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Future<void> _pickFiles() async {
-    // Enforce same restrictions as Agent chat: max 3 files, strict types
-    // Allowed extensions
-    const allowed = {
-      'pdf',
-      'png', 'jpg', 'jpeg', 'webp', 'gif',
-      'txt', 'md', 'markdown', 'html', 'htm', 'xml',
-    };
-
     final res = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       withData: true,
       type: FileType.custom,
-      allowedExtensions: allowed.toList(),
+      allowedExtensions: _allowedExts.toList(),
     );
     if (res == null) return;
 
-    // Apply 3-file total limit
     int remaining = 3 - _attachments.length;
     if (remaining <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'You can attach up to 3 files.',
-            style: GoogleFonts.poppins(),
-          ),
-        ),
+        SnackBar(content: Text('You can attach up to 3 files.', style: GoogleFonts.poppins())),
       );
       return;
     }
-
-    // Queue files locally; upload happens on send. Store raw bytes for hover preview.
     final picked = res.files.take(remaining);
     int rejected = 0;
     for (final f in picked) {
       if (f.bytes == null) continue;
-      final ext = f.extension?.toLowerCase() ?? f.name.split('.').last.toLowerCase();
-      if (!allowed.contains(ext)) {
-        rejected++;
-        continue;
-      }
+      final ext = (f.extension ?? '').toLowerCase();
+      if (!_allowedExts.contains(ext)) { rejected++; continue; }
       _attachments.add({
         'bytes': f.bytes!,
         'mime_type': _guessMime(f.name),
@@ -214,12 +131,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     }
     if (rejected > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Some files were rejected (unsupported type).',
-            style: GoogleFonts.poppins(),
-          ),
-        ),
+        SnackBar(content: Text('Some files were rejected (unsupported type).', style: GoogleFonts.poppins())),
       );
     }
     setState(() {});
@@ -238,8 +150,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
 
   void _showImageHoverOverlayForPill(BuildContext pillContext, String url) {
     _removeImageHoverOverlay();
-    final overlay = Overlay.of(context);
-    if (overlay == null) return;
+  final overlay = Overlay.maybeOf(context);
+  if (overlay == null) return;
 
     final renderObject = pillContext.findRenderObject();
     if (renderObject is! RenderBox) return;
@@ -297,8 +209,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
 
   void _showImageHoverOverlayForPillBytes(BuildContext pillContext, Uint8List bytes) {
     _removeImageHoverOverlay();
-    final overlay = Overlay.of(context);
-    if (overlay == null) return;
+  final overlay = Overlay.maybeOf(context);
+  if (overlay == null) return;
 
     final renderObject = pillContext.findRenderObject();
     if (renderObject is! RenderBox) return;
@@ -693,11 +605,6 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     );
   }
 
-  Future<void> _sendFeedback(String kind) async {
-    final prov = ref.read(playgroundProvider);
-    await prov.saveFeedback(kind: kind);
-  }
-
   void _openMostRecentCanvas() {
     final state = ref.read(playgroundProvider);
     if (state.canvasFiles.isEmpty) return;
@@ -723,42 +630,6 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     }
   }
 
-  Future<void> _showCanvasFilesMenu() async {
-    final state = ref.read(playgroundProvider);
-    if (state.canvasFiles.isEmpty) return;
-    final ctx = _canvasTitleKey.currentContext;
-    if (ctx == null) return;
-    final box = ctx.findRenderObject() as RenderBox;
-    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final pos = RelativeRect.fromRect(
-      Rect.fromLTWH(
-        box.localToGlobal(Offset.zero).dx,
-        box.localToGlobal(Offset.zero).dy + box.size.height,
-        box.size.width,
-        0,
-      ),
-      Offset.zero & overlay.size,
-    );
-    final selected = await showMenu<String>(
-      context: context,
-      position: pos,
-      color: const Color(0xFF1C1C22),
-      items: [
-        for (final f in state.canvasFiles)
-          PopupMenuItem<String>(
-            value: (f['path'] as String?) ?? '',
-            child: Text(
-              (f['path'] as String?) ?? 'file',
-              style: GoogleFonts.poppins(color: Colors.white),
-            ),
-          ),
-      ],
-    );
-    if (selected != null && selected.isNotEmpty) {
-      await ref.read(playgroundProvider).openCanvasFile(selected);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playgroundProvider);
@@ -766,310 +637,339 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     final titleText =
         state.chatTitle?.isNotEmpty == true ? state.chatTitle! : 'Playground';
     return Scaffold(
+      extendBodyBehindAppBar: true,
       backgroundColor: const Color(0xFF121216),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(
-          titleText,
-          style: GoogleFonts.poppins(
-            color: Colors.white,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        actions: [
-          if (state.artifacts.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
-                ),
-                child: InkWell(
-                  onTap: () => _showArtifactPreview(0),
-                  borderRadius: BorderRadius.circular(999),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 8.0,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.inventory_2_outlined,
-                          color: Colors.white70,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Artifacts',
-                          style: GoogleFonts.poppins(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(56),
+        child: Container(
+          // Let sidebar overlay over the AppBar area
+          color: Colors.transparent,
+          child: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0, // Prevent color change on scroll
+            // Reserve space for the collapsed sidebar (70px) so AppBar content shifts right
+            automaticallyImplyLeading: false,
+            leadingWidth: 70 + 48, // collapsed sidebar width + icon space
+            leading: Padding(
+              padding: const EdgeInsets.only(left: 70),
+              child: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.of(context).pop(),
               ),
             ),
-          if (state.canvasFiles.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
-                ),
-                child: InkWell(
-                  onTap: _openMostRecentCanvas,
-                  borderRadius: BorderRadius.circular(999),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12.0,
-                      vertical: 8.0,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.brush,
-                          color: Colors.white70,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Canvas',
-                          style: GoogleFonts.poppins(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+            titleSpacing: 16,
+            title: Text(
+              titleText,
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          IconButton(
-            tooltip: 'History',
-            onPressed: () async {
-              await ref.read(playgroundProvider).fetchChats();
-              setState(() => _historyOpen = true);
-            },
-            icon: const Icon(Icons.history, color: Colors.white),
-          ),
-          IconButton(
-            tooltip: 'New chat',
-            onPressed: () => ref.read(playgroundProvider).newChat(),
-            icon: const Icon(Icons.edit, color: Colors.white),
-          ),
-          if (state.streaming)
-            const Padding(
-              padding: EdgeInsets.only(right: 12.0),
-              child: Center(child: MiniWave(size: 20)),
-            ),
-        ],
-      ),
-      body: Row(
-        children: [
-          // Sidebar matches Home layout order
-          PremiumSidebar(
-            items: [
-              PremiumSidebarItem(
-                icon: Icons.home,
-                label: 'Home',
-                onTap: () => Navigator.of(context).pop(),
-                selected: false,
-              ),
-              PremiumSidebarItem(
-                icon: Icons.play_arrow_rounded,
-                label: 'Playground',
-                onTap: () {},
-                selected: true,
-              ),
-              PremiumSidebarItem(
-                icon: Icons.construction_rounded,
-                label: 'Build',
-                onTap:
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const BuildPage()),
+            actions: [
+              if (state.artifacts.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
                     ),
-              ),
-              PremiumSidebarItem(
-                icon: Icons.school_rounded,
-                label: 'Learn',
-                onTap:
-                    () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LearnPage()),
-                    ),
-              ),
-            ],
-            topPadding: 20,
-          ),
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final showCanvas =
-                    ref.watch(playgroundProvider).selectedCanvasPath != null;
-                return Row(
-                  children: [
-                    Expanded(
-                      flex: showCanvas ? 3 : 1,
-                      child: Stack(
-                        children: [
-                          _buildGlow(),
-                          if (!hasMessages)
-                            _buildLanding(context)
-                          else
-                            _buildConversation(context),
-                          _buildHistoryOverlay(context),
-                        ],
-                      ),
-                    ),
-                    if (showCanvas)
-                      Container(
-                        width: constraints.maxWidth * 0.35,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF141419),
-                          border: Border(
-                            left: BorderSide(
-                              color: Colors.white.withOpacity(0.08),
-                            ),
-                          ),
+                    child: InkWell(
+                      onTap: () => _showArtifactPreview(0),
+                      borderRadius: BorderRadius.circular(999),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0,
+                          vertical: 8.0,
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 12, 8, 8),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.brush,
-                                    color: Colors.white70,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: MouseRegion(
-                                      onEnter:
-                                          (_) => setState(
-                                            () => _hoveringCanvasTitle = true,
-                                          ),
-                                      onExit:
-                                          (_) => setState(
-                                            () => _hoveringCanvasTitle = false,
-                                          ),
-                                      child: GestureDetector(
-                                        onTap: _showCanvasFilesMenu,
-                                        child: Row(
-                                          key: _canvasTitleKey,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Expanded(
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 4,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withOpacity(0.06),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                  border: Border.all(
-                                                    color: Colors.white
-                                                        .withOpacity(0.12),
-                                                  ),
-                                                ),
-                                                child: Row(
-                                                  mainAxisSize:
-                                                      MainAxisSize.min,
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text(
-                                                        _formatCanvasTitle(
-                                                          ref
-                                                                  .watch(
-                                                                    playgroundProvider,
-                                                                  )
-                                                                  .selectedCanvasPath ??
-                                                              '',
-                                                        ),
-                                                        style:
-                                                            GoogleFonts.poppins(
-                                                              color:
-                                                                  Colors.white,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                            ),
-                                                        overflow:
-                                                            TextOverflow
-                                                                .ellipsis,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    const Icon(
-                                                      Icons.expand_more,
-                                                      color: Colors.white70,
-                                                      size: 16,
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Close',
-                                    onPressed:
-                                        () =>
-                                            ref
-                                                .read(playgroundProvider)
-                                                .closeCanvas(),
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                            const Icon(
+                              Icons.inventory_2_outlined,
+                              color: Colors.white70,
+                              size: 16,
                             ),
-                            const Divider(color: Colors.white12, height: 1),
-                            Expanded(
-                              child:
-                                  ref.watch(playgroundProvider).loadingCanvas
-                                      ? const Center(child: MiniWave(size: 28))
-                                      : _CanvasPreview(
-                                        content:
-                                            ref
-                                                .watch(playgroundProvider)
-                                                .selectedCanvasContent ??
-                                            '',
-                                      ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Artifacts',
+                              style: GoogleFonts.poppins(color: Colors.white),
                             ),
                           ],
                         ),
                       ),
-                  ],
-                );
-              },
+                    ),
+                  ),
+                ),
+              if (state.canvasFiles.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    ),
+                    child: InkWell(
+                      onTap: _openMostRecentCanvas,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12.0,
+                          vertical: 8.0,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.brush,
+                              color: Colors.white70,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Canvas',
+                              style: GoogleFonts.poppins(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              IconButton(
+                tooltip: 'New chat',
+                onPressed: () => ref.read(playgroundProvider).newChat(),
+                icon: const Icon(Icons.edit, color: Colors.white),
+              ),
+              if (state.streaming)
+                const Padding(
+                  padding: EdgeInsets.only(right: 12.0),
+                  child: Center(child: MiniWave(size: 20)),
+                ),
+            ],
+          ),
+        ),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF0A0A0D),
+              Color(0xFF121216),
+              Color(0xFF1A1A20),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            stops: [0.0, 0.5, 1.0],
+            transform: GradientRotation(2.356),
+          ),
+        ),
+        child: TweenAnimationBuilder<double>(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          tween: Tween(begin: 0.0, end: 1.0),
+          builder: (context, t, child) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 8),
+              child: child,
             ),
           ),
-        ],
+          child: Row(
+            children: [
+              PremiumSidebar(
+                items: [
+                  PremiumSidebarItem(
+                    icon: Icons.home,
+                    label: 'Home',
+                    onTap: () => Navigator.of(context).pop(),
+                    selected: false,
+                  ),
+                  PremiumSidebarItem(
+                    icon: Icons.play_arrow_rounded,
+                    label: 'Playground',
+                    onTap: () {},
+                    selected: true,
+                  ),
+                  PremiumSidebarItem(
+                    icon: Icons.construction_rounded,
+                    label: 'Build',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const BuildPage()),
+                    ),
+                  ),
+                  PremiumSidebarItem(
+                    icon: Icons.school_rounded,
+                    label: 'Learn',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const LearnPage()),
+                    ),
+                  ),
+                ],
+                topPadding: 16,
+                middle: _PlaygroundHistoryPanel(ref: ref),
+              ),
+              // Only the main content area is pushed below the AppBar; the sidebar touches the very top
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 56),
+                  child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final showCanvas = ref.watch(playgroundProvider).selectedCanvasPath != null;
+                    return Row(
+                      children: [
+                        Expanded(
+                          flex: showCanvas ? 4 : 2,
+                          child: Stack(
+                            children: [
+                              _buildGlow(),
+                              AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 280),
+                                switchInCurve: Curves.easeOutCubic,
+                                switchOutCurve: Curves.easeInCubic,
+                                child: !hasMessages ? _buildLanding(context) : _buildConversation(context),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (showCanvas)
+                          TweenAnimationBuilder<double>(
+                            duration: const Duration(milliseconds: 400),
+                            curve: Curves.easeOutCubic,
+                            tween: Tween(begin: 0.0, end: 1.0),
+                            builder: (context, t, child) => Transform.translate(
+                              offset: Offset((1 - t) * 100, 0),
+                              child: Opacity(
+                                opacity: t,
+                                child: child,
+                              ),
+                            ),
+                            child: Container(
+                              width: constraints.maxWidth * 0.35,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF1A1D29),
+                                    Color(0xFF151824), 
+                                    Color(0xFF111320)
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                border: Border(
+                                  left: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 8,
+                                    offset: const Offset(-2, 0),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Enhanced header with better styling
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.03),
+                                      border: Border(
+                                        bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(8),
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(
+                                              colors: [
+                                                Color(0xFF7F5AF0),
+                                                Color(0xFF9D4EDD),
+                                              ],
+                                            ),
+                                            borderRadius: BorderRadius.circular(8),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: const Color(0xFF7F5AF0).withOpacity(0.3),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: const Icon(Icons.code, color: Colors.white, size: 18),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Canvas Preview',
+                                                style: GoogleFonts.poppins(
+                                                  color: Colors.white.withOpacity(0.7),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                _formatCanvasTitle(ref.watch(playgroundProvider).selectedCanvasPath ?? ''),
+                                                style: GoogleFonts.poppins(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 14,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Close Canvas',
+                                          onPressed: () => ref.read(playgroundProvider).closeCanvas(),
+                                          icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: Colors.white.withOpacity(0.05),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Enhanced content area
+                                  Expanded(
+                                    child: ref.watch(playgroundProvider).loadingCanvas
+                                        ? Container(
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withOpacity(0.2),
+                                            ),
+                                            child: const Center(child: MiniWave(size: 28)),
+                                          )
+                                        : _CanvasPreview(content: ref.watch(playgroundProvider).selectedCanvasContent ?? ''),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1082,6 +982,91 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Hero canvas icon with colorful glow effect
+          TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 380),
+            curve: Curves.easeOutBack,
+            tween: Tween(begin: 0.92, end: 1.0),
+            builder: (context, s, child) => Transform.scale(scale: s, child: child),
+            child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Glow effect layers
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFFEE7752).withOpacity(0.35),
+                      const Color(0xFFE73C7E).withOpacity(0.25),
+                      const Color(0xFF23A6D5).withOpacity(0.18),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.35, 0.7, 1.0],
+                  ),
+                ),
+              ),
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      const Color(0xFF12D8FA).withOpacity(0.45),
+                      const Color(0xFFA6FFCB).withOpacity(0.25),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.6, 1.0],
+                  ),
+                ),
+              ),
+              // Main canvas icon with colorful gradient stroke
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: SweepGradient(
+                    colors: const [
+                      Color(0xFFEE7752),
+                      Color(0xFFE73C7E),
+                      Color(0xFF23A6D5),
+                      Color(0xFF23D5AB),
+                      Color(0xFFEE7752),
+                    ],
+                    stops: const [0.0, 0.25, 0.5, 0.75, 1.0],
+                    startAngle: 0.0,
+                    endAngle: 6.283, // ~2pi
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE73C7E).withOpacity(0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Container(
+                  margin: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F1420),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: const Icon(
+                    Icons.palette_rounded,
+                    color: Colors.white,
+                    size: 34,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          ),
+          const SizedBox(height: 32),
           Text(
             'Bring Your Ideas to Life',
             style: GoogleFonts.poppins(
@@ -1104,7 +1089,9 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
           const SizedBox(height: 28),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: inputWidth.clamp(360, 720)),
-            child: _InputBar(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _InputBar(
               controller: _controller,
               focusNode: _focusNode,
               attachments: _attachments,
@@ -1120,6 +1107,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               onHoverImageExit: _removeImageHoverOverlay,
               onOpenImageModalUrl: _showImageModal,
               onOpenImageModalBytes: _showImageModalBytes,
+              ),
             ),
           ),
         ],
@@ -1134,20 +1122,19 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     return Column(
       children: [
         Expanded(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: state.messages.length,
-              itemBuilder: (context, index) {
+          child: Stack(
+            children: [
+              Align(
+                alignment: Alignment.topCenter,
+                child: ListView.builder(
+                  controller: _conversationScrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: state.messages.length,
+                  itemBuilder: (context, index) {
                 final m = state.messages[index];
                 final isUser = m.sender == 'user';
-                final isLastAI =
-                    !isUser &&
-                    index ==
-                        state.messages.lastIndexWhere(
-                          (mm) => mm.sender == 'ai',
-                        );
+                final isStreamingLastAI = !isUser && index == state.messages.length - 1 && state.streaming;
+                // removed unused isLastAI local variable
                 return Align(
                   alignment: Alignment.center,
                   child: ConstrainedBox(
@@ -1188,8 +1175,6 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                             if (!isUser &&
                                 (m.thoughts?.isNotEmpty == true)) ...[
                               _ThoughtsAccordion(thoughts: m.thoughts!),
-                              const SizedBox(height: 10),
-                              const Divider(color: Colors.white24, height: 1),
                               const SizedBox(height: 10),
                             ],
                             if (isUser && m.attachments.isNotEmpty) ...[
@@ -1271,29 +1256,32 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               ),
                               const SizedBox(height: 10),
                             ],
-                            _SegmentedMarkdown(
-                              data: m.content,
-                              inlineEvents:
-                                  (!isUser &&
-                                          (m.toolResults?['events'] is List))
-                                      ? List<Map<String, dynamic>>.from(
-                                        m.toolResults!['events'] as List,
-                                      )
-                                      : const [],
-                              fetchCanvasPreview:
-                                  (path) => ref
-                                      .read(playgroundProvider)
-                                      .fetchCanvasFileContent(path),
-                              openCanvas:
-                                  (path) => ref
-                                      .read(playgroundProvider)
-                                      .openCanvasFile(path),
-                              textStyle: GoogleFonts.poppins(
-                                color: Colors.white,
-                                fontSize: 15,
-                                height: 2.2,
+                            if (!isUser && isStreamingLastAI && (m.content.trim().isEmpty || m.content.toLowerCase().contains('thinking')))
+                              const ThinkingDotsLoader(size: 56)
+                            else
+                              _SegmentedMarkdown(
+                                data: m.content,
+                                inlineEvents:
+                                    (!isUser &&
+                                            (m.toolResults?['events'] is List))
+                                        ? List<Map<String, dynamic>>.from(
+                                          m.toolResults!['events'] as List,
+                                        )
+                                        : const [],
+                                fetchCanvasPreview:
+                                    (path) => ref
+                                        .read(playgroundProvider)
+                                        .fetchCanvasFileContent(path),
+                                openCanvas:
+                                    (path) => ref
+                                        .read(playgroundProvider)
+                                        .openCanvasFile(path),
+                                textStyle: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontSize: 15,
+                                  height: 2.2,
+                                ),
                               ),
-                            ),
                             if (!isUser) ...[
                               const SizedBox(height: 8),
                               Row(
@@ -1312,52 +1300,54 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  IconButton(
-                                    tooltip: 'Like',
-                                    onPressed:
-                                        () => ref
-                                            .read(playgroundProvider)
-                                            .saveMessageFeedback(
-                                              messageId: m.id,
-                                              kind:
-                                                  m.feedback == 'like'
-                                                      ? null
-                                                      : 'like',
-                                            ),
-                                    icon: Icon(
-                                      m.feedback == 'like'
-                                          ? Icons.thumb_up_alt
-                                          : Icons.thumb_up_alt_outlined,
-                                      color:
-                                          m.feedback == 'like'
-                                              ? AppColors.accent
-                                              : Colors.white70,
-                                      size: 18,
+                                  if (!isStreamingLastAI) ...[
+                                    IconButton(
+                                      tooltip: 'Like',
+                                      onPressed:
+                                          () => ref
+                                              .read(playgroundProvider)
+                                              .saveMessageFeedback(
+                                                messageId: m.id,
+                                                kind:
+                                                    m.feedback == 'like'
+                                                        ? null
+                                                        : 'like',
+                                              ),
+                                      icon: Icon(
+                                        m.feedback == 'like'
+                                            ? Icons.thumb_up_alt
+                                            : Icons.thumb_up_alt_outlined,
+                                        color:
+                                            m.feedback == 'like'
+                                                ? AppColors.accent
+                                                : Colors.white70,
+                                        size: 18,
+                                      ),
                                     ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Dislike',
-                                    onPressed:
-                                        () => ref
-                                            .read(playgroundProvider)
-                                            .saveMessageFeedback(
-                                              messageId: m.id,
-                                              kind:
-                                                  m.feedback == 'dislike'
-                                                      ? null
-                                                      : 'dislike',
-                                            ),
-                                    icon: Icon(
-                                      m.feedback == 'dislike'
-                                          ? Icons.thumb_down_alt
-                                          : Icons.thumb_down_alt_outlined,
-                                      color:
-                                          m.feedback == 'dislike'
-                                              ? AppColors.accent
-                                              : Colors.white70,
-                                      size: 18,
+                                    IconButton(
+                                      tooltip: 'Dislike',
+                                      onPressed:
+                                          () => ref
+                                              .read(playgroundProvider)
+                                              .saveMessageFeedback(
+                                                messageId: m.id,
+                                                kind:
+                                                    m.feedback == 'dislike'
+                                                        ? null
+                                                        : 'dislike',
+                                              ),
+                                      icon: Icon(
+                                        m.feedback == 'dislike'
+                                            ? Icons.thumb_down_alt
+                                            : Icons.thumb_down_alt_outlined,
+                                        color:
+                                            m.feedback == 'dislike'
+                                                ? AppColors.accent
+                                                : Colors.white70,
+                                        size: 18,
+                                      ),
                                     ),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ],
@@ -1370,28 +1360,38 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               },
             ),
           ),
-        ),
-        // Bottom input, 50% width, identical to Home
-        Align(
-          alignment: Alignment.center,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: (width * 0.5).clamp(480, 900),
-            ),
-            child: _InputBar(
-              controller: _controller,
-              focusNode: _focusNode,
-              attachments: _attachments,
-              onPickFiles: _pickFiles,
-              onRemoveAttachmentAt: _removeAttachmentAt,
-              onSend: _send,
-              uploading: _uploading,
-              onHoverImageExit: _removeImageHoverOverlay,
-              onHoverImageEnterUrl: _showImageHoverOverlayForPill,
-              onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
-              onOpenImageModalUrl: _showImageModal,
-              onOpenImageModalBytes: _showImageModalBytes,
-              sending: state.sending || state.streaming,
+          // Scroll to bottom button overlay
+          ScrollToBottomButton(
+            isVisible: _showScrollToBottom,
+            onPressed: _scrollToBottom,
+          ),
+        ],
+      ),
+    ),
+    // Bottom input, 50% width, identical to Home
+        Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: Align(
+            alignment: Alignment.center,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: (width * 0.5).clamp(480, 900),
+              ),
+              child: _InputBar(
+                controller: _controller,
+                focusNode: _focusNode,
+                attachments: _attachments,
+                onPickFiles: _pickFiles,
+                onRemoveAttachmentAt: _removeAttachmentAt,
+                onSend: _send,
+                uploading: _uploading,
+                onHoverImageExit: _removeImageHoverOverlay,
+                onHoverImageEnterUrl: _showImageHoverOverlayForPill,
+                onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
+                onOpenImageModalUrl: _showImageModal,
+                onOpenImageModalBytes: _showImageModalBytes,
+                sending: state.sending || state.streaming,
+              ),
             ),
           ),
         ),
@@ -1434,49 +1434,191 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   }
 }
 
+class _PlaygroundHistoryPanel extends StatelessWidget {
+  final WidgetRef ref;
+  const _PlaygroundHistoryPanel({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(playgroundProvider);
+    final chats = state.chats;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+          child: Row(
+            children: [
+              const Icon(Icons.history, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Text('History', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Refresh',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.refresh, color: Colors.white54, size: 16),
+                onPressed: () => ref.read(playgroundProvider).fetchChats(),
+              ),
+            ],
+          ),
+        ),
+        // Remove divider to blend with sidebar
+        const SizedBox(height: 4),
+        Expanded(
+          child: chats.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'No chats yet',
+                      style: GoogleFonts.poppins(color: Colors.white54),
+                    ),
+                  ),
+                )
+        : ListView.separated(
+          padding: const EdgeInsets.all(8),
+                  itemBuilder: (ctx, i) {
+                    final c = chats[i];
+                    final title = (c['title'] as String?)?.trim().isNotEmpty == true
+                        ? c['title'] as String
+                        : 'Untitled Chat';
+                    return InkWell(
+                      onTap: () async {
+                        await ref.read(playgroundProvider).loadChat(c['id'] as String);
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                        decoration: BoxDecoration(
+                          // Blend with sidebar background; remove borders
+                          color: Colors.white.withOpacity(0.04),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.transparent),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white60, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.95), fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
+                  itemCount: chats.length,
+                ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => ref.read(playgroundProvider).newChat(),
+              style: OutlinedButton.styleFrom(
+                // Make bottom button blend; transparent border
+                side: const BorderSide(color: Colors.transparent),
+                foregroundColor: Colors.white70,
+              ),
+              icon: const Icon(Icons.add, size: 16),
+              label: Text('New chat', style: GoogleFonts.poppins(fontSize: 12)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _CanvasPreview extends StatelessWidget {
   final String content;
   const _CanvasPreview({required this.content});
 
   @override
   Widget build(BuildContext context) {
-    final looksMarkdown = content.contains('# ') || content.contains('```');
-    if (looksMarkdown) {
-      return Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Markdown(
-          data: content,
-          styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-            p: GoogleFonts.poppins(color: Colors.white, height: 1.6),
-            code: GoogleFonts.robotoMono(
-              backgroundColor: Colors.black.withOpacity(0.3),
-              color: Colors.white.withOpacity(0.95),
-              fontSize: 13,
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with file info
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+              border: Border(
+                bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.description_outlined,
+                    color: Colors.white70,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '${content.split('\n').length} lines',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white.withOpacity(0.7),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
-          builders: {'pre': CodeBlockBuilder()},
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.all(12.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(12),
-          child: SelectableText(
-            content,
-            style: GoogleFonts.robotoMono(
-              color: Colors.white70,
-              fontSize: 13,
-              height: 1.5,
+          // Content area with better padding and scrolling
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: SelectableText(
+                  content.isEmpty ? '// Canvas content will appear here...' : content,
+                  style: GoogleFonts.jetBrainsMono(
+                    color: content.isEmpty ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.85),
+                    fontSize: 13,
+                    height: 1.6,
+                    fontStyle: content.isEmpty ? FontStyle.italic : FontStyle.normal,
+                  ),
+                ),
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
