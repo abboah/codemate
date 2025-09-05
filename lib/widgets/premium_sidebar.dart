@@ -41,7 +41,8 @@ class PremiumSidebar extends ConsumerStatefulWidget {
   ConsumerState<PremiumSidebar> createState() => _PremiumSidebarState();
 }
 
-class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTickerProviderStateMixin {
+class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
+    with SingleTickerProviderStateMixin {
   OverlayEntry? _overlay;
   late final AnimationController _controller;
   late final Animation<double> _fade;
@@ -72,16 +73,22 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 220));
-    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
-    _slide = Tween<Offset>(begin: const Offset(-0.05, 0), end: Offset.zero).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
     );
+    _fade = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _slide = Tween<Offset>(
+      begin: const Offset(-0.05, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
   }
 
   @override
   void dispose() {
-    try { _overlay?.remove(); } catch (_) {}
+    try {
+      _overlay?.remove();
+    } catch (_) {}
     _overlay = null;
     _controller.dispose();
     super.dispose();
@@ -121,22 +128,29 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
   void _hideOverlay() {
     if (_overlay == null) return;
     _controller.reverse().whenComplete(() {
-      try { _overlay?.remove(); } catch (_) {}
+      try {
+        _overlay?.remove();
+      } catch (_) {}
       _overlay = null;
-      if (mounted) setState(() { _showing = false; });
+      if (mounted)
+        setState(() {
+          _showing = false;
+        });
     });
   }
 
   void _showOverlay() {
     if (_showing) return;
-    setState(() { _showing = true; });
+    setState(() {
+      _showing = true;
+    });
     _insertOverlay();
   }
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => _showOverlay(),
+      //  onEnter: (_) => _showOverlay(),
       child: Container(
         width: widget.collapsedWidth,
         decoration: BoxDecoration(
@@ -157,32 +171,37 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
           child: Column(
             children: [
               // App icon with enhanced styling
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.accent.withOpacity(0.8),
-                      AppColors.accent.withOpacity(0.4),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.accent.withOpacity(0.3)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.accent.withOpacity(0.4),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+              InkWell(
+                onTap: () => _showOverlay(),
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.accent.withOpacity(0.8),
+                        AppColors.accent.withOpacity(0.4),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
-                  size: 22,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.accent.withOpacity(0.3),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accent.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -205,21 +224,24 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                           child: Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: selected
-                                  ? AppColors.accent.withOpacity(0.15)
-                                  : Colors.transparent,
+                              color:
+                                  selected
+                                      ? AppColors.accent.withOpacity(0.15)
+                                      : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: selected
-                                    ? AppColors.accent.withOpacity(0.3)
-                                    : Colors.transparent,
+                                color:
+                                    selected
+                                        ? AppColors.accent.withOpacity(0.3)
+                                        : Colors.transparent,
                               ),
                             ),
                             child: Icon(
                               item.icon,
-                              color: selected
-                                  ? AppColors.accent
-                                  : Colors.white.withOpacity(0.7),
+                              color:
+                                  selected
+                                      ? AppColors.accent
+                                      : Colors.white.withOpacity(0.7),
                               size: 24,
                             ),
                           ),
@@ -278,7 +300,9 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+                      border: Border.all(
+                        color: AppColors.accent.withOpacity(0.3),
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: AppColors.accent.withOpacity(0.4),
@@ -327,19 +351,31 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                           },
                           borderRadius: BorderRadius.circular(12),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                              horizontal: 14,
+                            ),
                             decoration: BoxDecoration(
-                              color: selected ? AppColors.accent.withOpacity(0.15) : Colors.transparent,
+                              color:
+                                  selected
+                                      ? AppColors.accent.withOpacity(0.15)
+                                      : Colors.transparent,
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: selected ? AppColors.accent.withOpacity(0.3) : Colors.transparent,
+                                color:
+                                    selected
+                                        ? AppColors.accent.withOpacity(0.3)
+                                        : Colors.transparent,
                               ),
                             ),
                             child: Row(
                               children: [
                                 Icon(
                                   item.icon,
-                                  color: selected ? AppColors.accent : Colors.white.withOpacity(0.85),
+                                  color:
+                                      selected
+                                          ? AppColors.accent
+                                          : Colors.white.withOpacity(0.85),
                                   size: 22,
                                 ),
                                 const SizedBox(width: 14),
@@ -349,9 +385,15 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: GoogleFonts.poppins(
-                                      color: selected ? Colors.white : Colors.white.withOpacity(0.95),
+                                      color:
+                                          selected
+                                              ? Colors.white
+                                              : Colors.white.withOpacity(0.95),
                                       fontSize: 14,
-                                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                      fontWeight:
+                                          selected
+                                              ? FontWeight.w600
+                                              : FontWeight.w500,
                                     ),
                                   ),
                                 ),
@@ -370,7 +412,9 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.04),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white.withOpacity(0.08)),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.08),
+                            ),
                           ),
                           child: widget.middle!,
                         ),
@@ -396,14 +440,14 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
 
   Widget _buildUserProfile() {
     final authUser = ref.watch(authUserProvider);
-    
+
     return authUser.when(
       data: (user) {
         if (user == null) return const SizedBox.shrink();
-        
+
         final initials = _getInitials(user.userMetadata?['full_name'] ?? '');
         final avatarUrl = user.userMetadata?['avatar_url'] as String?;
-        
+
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
           child: Tooltip(
@@ -417,60 +461,61 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.1),
-                  ),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
                 ),
                 child: CircleAvatar(
                   radius: 18,
                   backgroundColor: AppColors.accent.withOpacity(0.2),
-                  backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty 
-                      ? NetworkImage(avatarUrl) 
-                      : null,
-                  child: avatarUrl == null || avatarUrl.isEmpty
-                      ? Text(
-                          initials,
-                          style: GoogleFonts.poppins(
-                            color: AppColors.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        )
-                      : null,
+                  backgroundImage:
+                      avatarUrl != null && avatarUrl.isNotEmpty
+                          ? NetworkImage(avatarUrl)
+                          : null,
+                  child:
+                      avatarUrl == null || avatarUrl.isEmpty
+                          ? Text(
+                            initials,
+                            style: GoogleFonts.poppins(
+                              color: AppColors.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          )
+                          : null,
                 ),
               ),
             ),
           ),
         );
       },
-      loading: () => Container(
-        margin: const EdgeInsets.symmetric(horizontal: 8),
-        padding: const EdgeInsets.all(8),
-        child: const CircleAvatar(
-          radius: 18,
-          backgroundColor: Colors.grey,
-          child: SizedBox(
-            width: 16,
-            height: 16,
-            child: CircularProgressIndicator(strokeWidth: 2),
+      loading:
+          () => Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.all(8),
+            child: const CircleAvatar(
+              radius: 18,
+              backgroundColor: Colors.grey,
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           ),
-        ),
-      ),
       error: (_, __) => const SizedBox.shrink(),
     );
   }
 
   Widget _buildExpandedUserProfile() {
     final authUser = ref.watch(authUserProvider);
-    
+
     return authUser.when(
       data: (user) {
         if (user == null) return const SizedBox.shrink();
-        
+
         final initials = _getInitials(user.userMetadata?['full_name'] ?? '');
         final avatarUrl = user.userMetadata?['avatar_url'] as String?;
         final fullName = user.userMetadata?['full_name'] as String? ?? 'User';
-        
+
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 12),
           child: InkWell(
@@ -481,28 +526,28 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.05),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.1),
-                ),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
               ),
               child: Row(
                 children: [
                   CircleAvatar(
                     radius: 18,
                     backgroundColor: AppColors.accent.withOpacity(0.2),
-                    backgroundImage: avatarUrl != null && avatarUrl.isNotEmpty 
-                        ? NetworkImage(avatarUrl) 
-                        : null,
-                    child: avatarUrl == null || avatarUrl.isEmpty
-                        ? Text(
-                            initials,
-                            style: GoogleFonts.poppins(
-                              color: AppColors.accent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          )
-                        : null,
+                    backgroundImage:
+                        avatarUrl != null && avatarUrl.isNotEmpty
+                            ? NetworkImage(avatarUrl)
+                            : null,
+                    child:
+                        avatarUrl == null || avatarUrl.isEmpty
+                            ? Text(
+                              initials,
+                              style: GoogleFonts.poppins(
+                                color: AppColors.accent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                            : null,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -540,31 +585,32 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar> with SingleTick
           ),
         );
       },
-      loading: () => Container(
-        margin: const EdgeInsets.symmetric(horizontal: 12),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.grey,
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+      loading:
+          () => Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            child: Row(
+              children: [
+                const CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.grey,
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Loading...',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white.withOpacity(0.6),
+                    fontSize: 13,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Text(
-              'Loading...',
-              style: GoogleFonts.poppins(
-                color: Colors.white.withOpacity(0.6),
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
       error: (_, __) => const SizedBox.shrink(),
     );
   }

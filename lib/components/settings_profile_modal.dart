@@ -28,8 +28,8 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: Container(
-            width: 500,
-            height: 350,
+            width: 550,
+            height: 500,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -39,8 +39,9 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
               type: MaterialType.transparency,
               child: Row(
                 children: [
-                  _buildTabs(),
+                  Expanded(flex: 1, child: _buildTabs()),
                   Expanded(
+                    flex: 2,
                     child: IndexedStack(
                       index: _selectedIndex,
                       children: [
@@ -107,134 +108,176 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
     final settingsNotifier = ref.read(userSettingsProvider.notifier);
 
     return settings.when(
-      data: (data) => Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Settings',
-              style: GoogleFonts.poppins(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white),
-            ),
-            const SizedBox(height: 24),
-            // Theme Toggle
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      data:
+          (data) => Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Theme',
-                    style:
-                        GoogleFonts.poppins(fontSize: 16, color: Colors.white70)),
-                Switch(
-                  value: data.theme == 'dark',
-                  onChanged: (val) {
-                    settingsNotifier.updateTheme(val ? 'dark' : 'light');
-                  },
-                  activeColor: Colors.blueAccent,
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Notifications Toggle
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Notifications',
-                    style:
-                        GoogleFonts.poppins(fontSize: 16, color: Colors.white70)),
-                Switch(
-                  value: data.notificationsEnabled,
-                  onChanged: (val) {
-                    settingsNotifier.updateNotifications(val);
-                  },
-                  activeColor: Colors.blueAccent,
-                ),
-              ],
-            ),
-            const Spacer(),
-            // Logout and Delete Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TextButton.icon(
-                  onPressed: () async {
-                    await ref.read(authServiceProvider).logout();
-                    if (mounted) {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => const AuthGate()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.logout_rounded, color: Colors.white70),
-                  label: Text(
-                    'Sign Out',
-                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 16),
-                  ),
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                Text(
+                  'Settings',
+                  style: GoogleFonts.poppins(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
                   ),
                 ),
-                TextButton.icon(
-                  onPressed: () async {
-                    final shouldDelete = await showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Delete Account?'),
-                        content: const Text('This action is irreversible. Are you sure you want to delete your account?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-                          ),
-                        ],
+                const SizedBox(height: 24),
+                // Theme Toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Theme',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        color: Colors.white70,
                       ),
-                    );
-
-                    if (shouldDelete == true) {
-                      try {
-                        await ref.read(authServiceProvider).deleteAccount();
+                    ),
+                    Switch(
+                      value: data.theme == 'dark',
+                      onChanged: (val) {
+                        settingsNotifier.updateTheme(val ? 'dark' : 'light');
+                      },
+                      activeColor: Colors.blueAccent,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Notifications Toggle
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Notifications',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    Switch(
+                      value: data.notificationsEnabled,
+                      onChanged: (val) {
+                        settingsNotifier.updateNotifications(val);
+                      },
+                      activeColor: Colors.blueAccent,
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                // Logout and Delete Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () async {
+                        await ref.read(authServiceProvider).logout();
                         if (mounted) {
                           Navigator.of(context).pushAndRemoveUntil(
-                            MaterialPageRoute(builder: (context) => const AuthGate()),
+                            MaterialPageRoute(
+                              builder: (context) => const AuthGate(),
+                            ),
                             (route) => false,
                           );
                         }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to delete account: $e')),
-                          );
+                      },
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        color: Colors.white70,
+                      ),
+                      label: Text(
+                        'Sign Out',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: 16,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final shouldDelete = await showDialog(
+                          context: context,
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text('Delete Account?'),
+                                content: const Text(
+                                  'This action is irreversible. Are you sure you want to delete your account?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        );
+
+                        if (shouldDelete == true) {
+                          try {
+                            await ref.read(authServiceProvider).deleteAccount();
+                            if (mounted) {
+                              Navigator.of(context).pushAndRemoveUntil(
+                                MaterialPageRoute(
+                                  builder: (context) => const AuthGate(),
+                                ),
+                                (route) => false,
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to delete account: $e'),
+                                ),
+                              );
+                            }
+                          }
                         }
-                      }
-                    }
-                  },
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                  label: Text(
-                    'Delete Account',
-                    style: GoogleFonts.poppins(color: Colors.redAccent, fontSize: 16),
-                  ),
-                  style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
+                      },
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
+                      label: Text(
+                        'Delete Account',
+                        style: GoogleFonts.poppins(
+                          color: Colors.redAccent,
+                          fontSize: 16,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, stack) => Center(child: Text('Error: $err')),
     );
@@ -251,7 +294,10 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
           Text(
             'Profile',
             style: GoogleFonts.poppins(
-                fontSize: 24, fontWeight: FontWeight.w600, color: Colors.white),
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
           ),
           const SizedBox(height: 24),
           authUser.when(
@@ -261,15 +307,19 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
               }
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
+
                 children: [
                   Stack(
                     children: [
                       CircleAvatar(
                         radius: 50,
-                        backgroundImage: NetworkImage(user.userMetadata?['avatar_url'] ?? ''),
-                        child: user.userMetadata?['avatar_url'] == null
-                            ? const Icon(Icons.person, size: 50)
-                            : null,
+                        backgroundImage: NetworkImage(
+                          user.userMetadata?['avatar_url'] ?? '',
+                        ),
+                        child:
+                            user.userMetadata?['avatar_url'] == null
+                                ? const Icon(Icons.person, size: 50)
+                                : null,
                       ),
                       Positioned(
                         bottom: 0,
@@ -278,18 +328,26 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
                           icon: const Icon(Icons.edit, color: Colors.white),
                           onPressed: () async {
                             final picker = ImagePicker();
-                            final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+                            final pickedFile = await picker.pickImage(
+                              source: ImageSource.gallery,
+                            );
 
                             if (pickedFile != null) {
                               final file = File(pickedFile.path);
                               try {
-                                await ref.read(authServiceProvider).uploadAvatar(file);
+                                await ref
+                                    .read(authServiceProvider)
+                                    .uploadAvatar(file);
                                 // Refresh the user to get the new avatar_url
                                 ref.refresh(authUserProvider);
                               } catch (e) {
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Failed to upload avatar: $e')),
+                                    SnackBar(
+                                      content: Text(
+                                        'Failed to upload avatar: $e',
+                                      ),
+                                    ),
                                   );
                                 }
                               }
@@ -301,23 +359,39 @@ class _SettingsProfileModalState extends ConsumerState<SettingsProfileModal> {
                   ),
                   const SizedBox(height: 24),
                   ListTile(
-                    leading: const Icon(Icons.email_outlined, color: Colors.white70),
-                    title: Text('Email', style: GoogleFonts.poppins(color: Colors.white70)),
-                    subtitle: Text(user.email ?? 'No email associated',
-                        style: GoogleFonts.poppins(color: Colors.white)),
+                    leading: const Icon(
+                      Icons.email_outlined,
+                      color: Colors.white70,
+                    ),
+                    title: Text(
+                      'Email',
+                      style: GoogleFonts.poppins(color: Colors.white70),
+                    ),
+                    subtitle: Text(
+                      user.email ?? 'No email associated',
+                      style: GoogleFonts.poppins(color: Colors.white),
+                    ),
                   ),
                   ListTile(
-                    leading: const Icon(Icons.person_outline, color: Colors.white70),
-                    title: Text('Name', style: GoogleFonts.poppins(color: Colors.white70)),
-                    subtitle: Text(user.userMetadata?['full_name'] ?? 'No name set',
-                        style: GoogleFonts.poppins(color: Colors.white)),
+                    leading: const Icon(
+                      Icons.person_outline,
+                      color: Colors.white70,
+                    ),
+                    title: Text(
+                      'Name',
+                      style: GoogleFonts.poppins(color: Colors.white70),
+                    ),
+                    subtitle: Text(
+                      user.userMetadata?['full_name'] ?? 'No name set',
+                      style: GoogleFonts.poppins(color: Colors.white),
+                    ),
                   ),
                 ],
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, stack) => Center(child: Text('Error: $err')),
-          )
+          ),
         ],
       ),
     );
