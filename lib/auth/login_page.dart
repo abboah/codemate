@@ -18,6 +18,8 @@ import 'dart:ui';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_gate.dart';
+
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
 
@@ -196,7 +198,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
       log("Login Success: $email");
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const RobinDashboardMinimal()),
+        MaterialPageRoute(builder: (context) => const AuthGate()),
       );
       unawaited(HapticFeedback.lightImpact());
       if (!mounted) return;
@@ -515,7 +517,7 @@ class _LoginPageState extends ConsumerState<LoginPage>
                             offset: Offset(0, _cardSlideAnimation.value),
                             child: Opacity(
                               opacity: _cardFadeAnimation.value,
-                              child: Container(
+                              child: SizedBox(
                                 width: math.min(size.width * 0.95, 400),
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(24),

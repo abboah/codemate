@@ -15,6 +15,8 @@ import 'dart:ui';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'auth_gate.dart';
+
 class SignUpPage extends ConsumerStatefulWidget {
   const SignUpPage({super.key});
 
@@ -193,6 +195,7 @@ class _SignUpPageState extends ConsumerState<SignUpPage>
     try {
       final email = _emailController.text.trim();
       final password = _confirmPasswordController.text;
+      final fullName = _nameController.text.trim();
 
       // 3. Input validation
       if (password.length < 8) {
@@ -200,14 +203,14 @@ class _SignUpPageState extends ConsumerState<SignUpPage>
       }
 
       // 4. Secure signup process
-      await authService.signUpWithEmailAndPassword(email, password);
+      await authService.signUpWithEmailAndPassword(email, password, fullName);
 
       // 5. Post-signup actions before navigation
       log("SignUp Success: $email");
       // await _sendWelcomeEmail(email);
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => const RobinDashboardMinimal()),
+        MaterialPageRoute(builder: (context) => const AuthGate()),
       );
 
       // 6. Safe navigation with route clearing

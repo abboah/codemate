@@ -1,7 +1,7 @@
 import 'package:codemate/landing_page/landing_page.dart';
 import 'package:flutter/material.dart';
 
-class FeatureSection extends StatefulWidget {
+class FeatureSection extends StatelessWidget {
   final String title;
   final String description;
   final String imagePath;
@@ -16,82 +16,38 @@ class FeatureSection extends StatefulWidget {
   });
 
   @override
-  State<FeatureSection> createState() => _FeatureSectionState();
-}
-
-class _FeatureSectionState extends State<FeatureSection> {
-  final GlobalKey _key = GlobalKey();
-  bool _isVisible = true;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _initIntersectionObserver(),
-    );
-  }
-
-  void _initIntersectionObserver() {
-    final intersectionObserver = IntersectionObserver(
-      callback: (entries) {
-        final entry = entries.first;
-        if (entry.isIntersecting && !_isVisible) {
-          setState(() => _isVisible = true);
-        }
-      },
-      threshold: 0.1,
-    );
-    intersectionObserver.observe(_key.currentContext!);
-  }
-
-  @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 768;
 
     return Container(
-      key: _key,
-      //  color: const Color(0xFF0A0A0F),
       color: Colors.black,
-
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 24.0 : 120.0,
         vertical: 100,
       ),
-      child: AnimatedOpacity(
-        opacity: _isVisible ? 1 : 0,
-        duration: const Duration(milliseconds: 800),
-        curve: Curves.easeOut,
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 800),
-          padding: EdgeInsets.only(top: _isVisible ? 0 : 50),
-          curve: Curves.easeOut,
-          child:
-              isMobile
-                  ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTextContent(),
-                      const SizedBox(height: 40),
-                      _buildImage(),
+      child: isMobile
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildTextContent(),
+                const SizedBox(height: 40),
+                _buildImage(),
+              ],
+            )
+          : Row(
+              children: isReversed
+                  ? [
+                      Expanded(child: _buildImage()),
+                      const SizedBox(width: 80),
+                      Expanded(child: _buildTextContent()),
+                    ]
+                  : [
+                      Expanded(child: _buildTextContent()),
+                      const SizedBox(width: 80),
+                      Expanded(child: _buildImage()),
                     ],
-                  )
-                  : Row(
-                    children:
-                        widget.isReversed
-                            ? [
-                              Expanded(child: _buildImage()),
-                              const SizedBox(width: 80),
-                              Expanded(child: _buildTextContent()),
-                            ]
-                            : [
-                              Expanded(child: _buildTextContent()),
-                              const SizedBox(width: 80),
-                              Expanded(child: _buildImage()),
-                            ],
-                  ),
-        ),
-      ),
+            ),
     );
   }
 
@@ -100,14 +56,11 @@ class _FeatureSectionState extends State<FeatureSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ShaderMask(
-          shaderCallback:
-              (bounds) => const LinearGradient(
-                //  colors: [Color(0xFF6C5DD3), Color(0xFF1E90FF)],
-                //  colors: [Colors.lightBlue, Colors.blueAccent],
-                colors: [Colors.white, Colors.white],
-              ).createShader(bounds),
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Colors.white, Colors.white],
+          ).createShader(bounds),
           child: Text(
-            widget.title,
+            title,
             style: const TextStyle(
               fontSize: 36.0,
               fontWeight: FontWeight.bold,
@@ -118,7 +71,7 @@ class _FeatureSectionState extends State<FeatureSection> {
         ),
         const SizedBox(height: 24),
         Text(
-          widget.description,
+          description,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 18.0,
@@ -130,7 +83,6 @@ class _FeatureSectionState extends State<FeatureSection> {
           scale: 1.03,
           child: GlassButton(
             onPressed: () {},
-            //  borderColor: const Color(0xFF6C5DD3),
             borderColor: Colors.blue,
             child: const Text(
               'Learn More',
@@ -146,10 +98,8 @@ class _FeatureSectionState extends State<FeatureSection> {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            //    color: const Color(0xFF6C5DD3).withOpacity(0.2),
-            //     color: Colors.blue,
             blurRadius: 40,
             spreadRadius: 10,
           ),
@@ -158,7 +108,7 @@ class _FeatureSectionState extends State<FeatureSection> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
         child: Image.asset(
-          widget.imagePath,
+          imagePath,
           width: double.infinity,
           fit: BoxFit.contain,
         ),

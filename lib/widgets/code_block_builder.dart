@@ -1,0 +1,97 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:markdown/markdown.dart' as md;
+
+class CodeBlockBuilder extends MarkdownElementBuilder {
+  @override
+  Widget visitElementAfter(md.Element element, TextStyle? preferredStyle) {
+    final codeText = element.textContent;
+    
+    final md.Element? codeElement = element.children?.firstWhere(
+      (el) => el is md.Element && el.tag == 'code',
+      orElse: () => md.Element.empty('code'),
+    ) as md.Element?;
+
+    final String language = codeElement?.attributes['class']?.replaceFirst('language-', '') ?? 'plaintext';
+
+    return SelectionContainer.disabled(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8.0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                // Horizontal scrolling for wide code
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: HighlightView(
+                    codeText,
+                    language: language,
+                    theme: atomOneDarkTheme,
+                    padding: const EdgeInsets.all(16),
+                    textStyle: GoogleFonts.firaCode(fontSize: 14, height: 1.6),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(Icons.copy_all_outlined, color: Colors.white70, size: 18),
+                    tooltip: 'Copy Code',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: codeText));
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// A Map of themes that can be used for syntax highlighting
+const atomOneDarkTheme = {
+  'root': TextStyle(backgroundColor: Color(0xff282c34), color: Color(0xffabb2bf)),
+  'comment': TextStyle(color: Color(0xff5c6370), fontStyle: FontStyle.italic),
+  'quote': TextStyle(color: Color(0xff5c6370), fontStyle: FontStyle.italic),
+  'doctag': TextStyle(color: Color(0xffc678dd)),
+  'keyword': TextStyle(color: Color(0xffc678dd)),
+  'formula': TextStyle(color: Color(0xffc678dd)),
+  'section': TextStyle(color: Color(0xffe06c75)),
+  'name': TextStyle(color: Color(0xffe06c75)),
+  'selector-tag': TextStyle(color: Color(0xffe06c75)),
+  'deletion': TextStyle(color: Color(0xffe06c75)),
+  'subst': TextStyle(color: Color(0xffe06c75)),
+  'literal': TextStyle(color: Color(0xff56b6c2)),
+  'string': TextStyle(color: Color(0xff98c379)),
+  'regexp': TextStyle(color: Color(0xff98c379)),
+  'addition': TextStyle(color: Color(0xff98c379)),
+  'attribute': TextStyle(color: Color(0xff98c379)),
+  'meta-string': TextStyle(color: Color(0xff98c379)),
+  'built_in': TextStyle(color: Color(0xffe6c07b)),
+  'class': TextStyle(color: Color(0xffe6c07b)),
+  'attr': TextStyle(color: Color(0xffd19a66)),
+  'variable': TextStyle(color: Color(0xffd19a66)),
+  'template-variable': TextStyle(color: Color(0xffd19a66)),
+  'type': TextStyle(color: Color(0xffd19a66)),
+  'selector-class': TextStyle(color: Color(0xffd19a66)),
+  'selector-attr': TextStyle(color: Color(0xffd19a66)),
+  'selector-pseudo': TextStyle(color: Color(0xffd19a66)),
+  'number': TextStyle(color: Color(0xffd19a66)),
+  'symbol': TextStyle(color: Color(0xff61aeee)),
+  'bullet': TextStyle(color: Color(0xff61aeee)),
+  'link': TextStyle(color: Color(0xff61aeee), decoration: TextDecoration.underline),
+  'meta': TextStyle(color: Color(0xff61aeee)),
+  'selector-id': TextStyle(color: Color(0xff61aeee)),
+  'title': TextStyle(color: Color(0xff61aeee)),
+  'emphasis': TextStyle(fontStyle: FontStyle.italic),
+  'strong': TextStyle(fontWeight: FontWeight.bold),
+};
