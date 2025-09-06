@@ -41,13 +41,102 @@ class PlaygroundState extends ChangeNotifier {
   final List<PlaygroundMessage> messages = [];
   final List<Map<String, dynamic>> chats = []; // { id, title, created_at }
   // Canvas state
-  final List<Map<String, dynamic>> canvasFiles = []; // { path, last_modified }
+  final List<Map<String, dynamic>> canvasFiles = []; // { path, last_modified, description?, file_type?, can_implement_in_canvas?, version_number? }
   // Artifacts state
   final List<Map<String, dynamic>> artifacts =
       []; // { id, title, artifact_type, last_modified, data }
   String? selectedCanvasPath;
   String? selectedCanvasContent;
+  Map<String, dynamic>? selectedCanvasMeta; // { description, file_type, can_implement_in_canvas, version_number }
   bool loadingCanvas = false;
+  // Versions state for current selected canvas
+  List<Map<String, dynamic>> selectedCanvasVersions = const [];
+  bool loadingVersions = false;
+  bool loadingVersionPreview = false;
+  int? previewVersionNumber; // when not null, canvas shows a historical version without changing DB
+
+  // Cache for a selected version preview content (to support quick compare/restore UI)
+  Map<int, String> _versionContentCache = {};
+
+  Future<String?> readCanvasVersion({required String path, required int versionNumber}) async {
+    if (chatId == null) return null;
+    try {
+      loadingVersionPreview = true;
+      notifyListeners();
+      // Resolve file id
+      final fileRow = await _client
+          .from('canvas_files')
+          .select('id')
+          .match({'chat_id': chatId!, 'path': path})
+          .single();
+    final snap = await _client
+      .from('canvas_file_versions')
+      .select('content, description, file_type, can_implement_in_canvas')
+          .eq('file_id', fileRow['id'])
+          .eq('version_number', versionNumber)
+          .single();
+      final content = (snap['content'] as String?) ?? '';
+      _versionContentCache[versionNumber] = content;
+      return content;
+    } catch (_) {
+      return null;
+    } finally {
+      loadingVersionPreview = false;
+      notifyListeners();
+    }
+  }
+
+  Future<Map<String, String>?> readVersionAndLatest({required String path, required int versionNumber}) async {
+    // Returns { old: versionContent, latest: currentContent }
+    final latest = selectedCanvasContent ?? await fetchCanvasFileContent(path) ?? '';
+    String? old = _versionContentCache[versionNumber];
+    old ??= await readCanvasVersion(path: path, versionNumber: versionNumber);
+    if (old == null) return null;
+    return { 'old': old, 'latest': latest };
+  }
+
+  // Enter a temporary preview of a historical version without modifying DB state
+  Future<void> enterCanvasVersionPreview({required String path, required int versionNumber}) async {
+    if (chatId == null) return;
+    loadingCanvas = true;
+    notifyListeners();
+    try {
+      // Resolve file id and fetch snapshot with meta
+      final fileRow = await _client
+          .from('canvas_files')
+          .select('id')
+          .match({'chat_id': chatId!, 'path': path})
+          .single();
+      final snap = await _client
+          .from('canvas_file_versions')
+          .select('content, description, file_type, can_implement_in_canvas')
+          .eq('file_id', fileRow['id'])
+          .eq('version_number', versionNumber)
+          .single();
+      selectedCanvasPath = path; // ensure path is set
+      selectedCanvasContent = (snap['content'] as String?) ?? '';
+      selectedCanvasMeta = {
+        'description': snap['description'],
+        'file_type': snap['file_type'],
+        'can_implement_in_canvas': snap['can_implement_in_canvas'] ?? false,
+        'version_number': versionNumber,
+      };
+      previewVersionNumber = versionNumber;
+    } finally {
+      loadingCanvas = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> exitCanvasVersionPreview() async {
+    if (chatId == null) return;
+    final path = selectedCanvasPath;
+    previewVersionNumber = null;
+    notifyListeners();
+    if (path != null) {
+      await openCanvasFile(path); // reload latest from DB
+    }
+  }
 
   Future<void> fetchChats() async {
     final rows = await _client
@@ -390,10 +479,20 @@ class PlaygroundState extends ChangeNotifier {
     if (chatId == null) return null;
     try {
       final row =
-          await _client.from('canvas_files').select('content').match({
+          await _client.from('canvas_files').select('content, description, file_type, can_implement_in_canvas, version_number').match({
             'chat_id': chatId!,
             'path': path,
           }).single();
+      // Update selected meta opportunistically if this matches
+      if (selectedCanvasPath == path) {
+        selectedCanvasMeta = {
+          'description': row['description'],
+          'file_type': row['file_type'],
+          'can_implement_in_canvas': row['can_implement_in_canvas'],
+          'version_number': row['version_number'],
+        };
+        notifyListeners();
+      }
       return (row['content'] as String?) ?? '';
     } catch (_) {
       return null;
@@ -437,7 +536,7 @@ class PlaygroundState extends ChangeNotifier {
     }
     final rows = await _client
         .from('canvas_files')
-        .select('path, last_modified')
+        .select('path, last_modified, description, file_type, can_implement_in_canvas, version_number')
         .eq('chat_id', chatId!)
         .order('path', ascending: true);
     canvasFiles
@@ -486,11 +585,19 @@ class PlaygroundState extends ChangeNotifier {
     notifyListeners();
     try {
       final row =
-          await _client.from('canvas_files').select('content').match({
+          await _client.from('canvas_files').select('content, description, file_type, can_implement_in_canvas, version_number').match({
             'chat_id': chatId!,
             'path': path,
           }).single();
       selectedCanvasContent = (row['content'] as String?) ?? '';
+      selectedCanvasMeta = {
+        'description': row['description'],
+        'file_type': row['file_type'],
+        'can_implement_in_canvas': row['can_implement_in_canvas'],
+        'version_number': row['version_number'],
+      };
+      // Load versions list lazily
+      try { await fetchCanvasVersions(path); } catch (_) {}
     } finally {
       loadingCanvas = false;
       notifyListeners();
@@ -500,8 +607,72 @@ class PlaygroundState extends ChangeNotifier {
   void closeCanvas() {
     selectedCanvasPath = null;
     selectedCanvasContent = null;
+    selectedCanvasMeta = null;
+    selectedCanvasVersions = const [];
     loadingCanvas = false;
     notifyListeners();
+  }
+
+  Future<void> fetchCanvasVersions(String path) async {
+    if (chatId == null) return;
+    loadingVersions = true;
+    notifyListeners();
+    try {
+      // Call edge function tool via RPC-equivalent table read
+      final fileRow = await _client
+          .from('canvas_files')
+          .select('id')
+          .match({'chat_id': chatId!, 'path': path})
+          .single();
+      final versions = await _client
+          .from('canvas_file_versions')
+          .select('version_number, created_at, description, file_type, can_implement_in_canvas')
+          .eq('file_id', fileRow['id'])
+          .order('version_number', ascending: false)
+          .limit(30);
+      selectedCanvasVersions = List<Map<String, dynamic>>.from(versions);
+    } catch (_) {
+      selectedCanvasVersions = const [];
+    } finally {
+      loadingVersions = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> restoreCanvasVersion({required String path, required int versionNumber}) async {
+    if (chatId == null) return false;
+    try {
+      // Read the snapshot content
+      final fileRow = await _client
+          .from('canvas_files')
+          .select('id, version_number')
+          .match({'chat_id': chatId!, 'path': path})
+          .single();
+      final snapshot = await _client
+          .from('canvas_file_versions')
+          .select('content, description, file_type, can_implement_in_canvas')
+          .eq('file_id', fileRow['id'])
+          .eq('version_number', versionNumber)
+          .single();
+      final nextVersion = (fileRow['version_number'] as int? ?? 1) + 1;
+      await _client
+          .from('canvas_files')
+          .update({
+            'content': snapshot['content'] ?? '',
+            'description': snapshot['description'],
+            'file_type': snapshot['file_type'],
+            'can_implement_in_canvas': snapshot['can_implement_in_canvas'] ?? false,
+            'version_number': nextVersion,
+            'last_modified': DateTime.now().toIso8601String(),
+          })
+          .match({'chat_id': chatId!, 'path': path});
+      // Refresh open file and versions
+      await openCanvasFile(path);
+      await fetchCanvasVersions(path);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 }
 

@@ -122,6 +122,43 @@ export const projectCardPreviewTool: FunctionDeclaration = {
 };
 
 /**
+ * Lint check tool: fast, non-LLM static checks for common syntax issues.
+ * It performs lightweight heuristics (balanced brackets/quotes, obvious typos) and returns a list of issues.
+ */
+export const lintCheckTool: FunctionDeclaration = {
+  name: "lint_check",
+  description: "Run a fast, non-LLM lint pass to find obvious syntax issues (unbalanced brackets/quotes, etc.). Prefer this often during editing.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      path: { type: Type.STRING, description: "Optional file path to lint. If omitted, provide 'content'." },
+      content: { type: Type.STRING, description: "Optional raw code to lint. Used if 'path' is not provided." },
+      max_issues: { type: Type.NUMBER, description: "Optional maximum number of issues to return (default 50)." },
+    },
+    required: [],
+  },
+};
+
+/**
+ * Analyze code tool: uses a lightweight model to summarize potential errors and improvements for a file or raw content.
+ */
+export const analyzeCodeTool: FunctionDeclaration = {
+  name: "analyze_code",
+  description: "Review code for potential errors and suggest improvements. Optionally focus on a specific issue via issuesToDiagnose. Keep output concise.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      path: { type: Type.STRING, description: "Optional file path to analyze." },
+      content: { type: Type.STRING, description: "Optional raw code to analyze (if path is not provided)." },
+      language: { type: Type.STRING, description: "Optional language hint (e.g., dart, js, ts, html, css)." },
+      max_bytes: { type: Type.NUMBER, description: "Optional max bytes to analyze (truncate if needed)." },
+      issuesToDiagnose: { type: Type.STRING, description: "Optional: a concrete issue or symptom to diagnose (e.g., 'scroll-to-bottom button not appearing', 'right-side overflow on small screens'). When provided, the analysis prioritizes finding causes and fixes for this issue." },
+    },
+    required: [],
+  },
+};
+
+/**
  * Todo list create tool
  */
 export const todoListCreateTool: FunctionDeclaration = {
@@ -233,6 +270,8 @@ export const playgroundTools = [
   analyzeDocumentTool,
   generateImageTool,
   enhanceImageTool,
+  lintCheckTool,
+  analyzeCodeTool,
 ];
 
 // Canvas tools for Playground (operate on per-chat canvas_files)
@@ -244,6 +283,10 @@ export const canvasCreateFileTool: FunctionDeclaration = {
     properties: {
       path: { type: Type.STRING, description: "Unique path of the canvas file to create (e.g., 'canvas.md')." },
       content: { type: Type.STRING, description: "Initial content of the file." },
+      description: { type: Type.STRING, description: "Short, human‑friendly title/description for this file (shown in UI)." },
+      file_type: { type: Type.STRING, description: "Type of file. Must be either 'code' or 'document'. If omitted, inferred from extension (md/txt => document; otherwise code)." },
+      can_implement_in_canvas: { type: Type.BOOLEAN, description: "Whether this file can be executed/rendered in the Canvas WebView (web‑runnable single file)." },
+      version_number: { type: Type.NUMBER, description: "Starting version number (defaults to 1)." },
     },
     required: ["path", "content"],
   },
@@ -257,6 +300,10 @@ export const canvasUpdateFileTool: FunctionDeclaration = {
     properties: {
       path: { type: Type.STRING, description: "Path of the canvas file to update." },
       new_content: { type: Type.STRING, description: "New content to overwrite." },
+      description: { type: Type.STRING, description: "Optional new short title/description." },
+      file_type: { type: Type.STRING, description: "Optional new file type ('code' | 'document')." },
+      can_implement_in_canvas: { type: Type.BOOLEAN, description: "Optional: toggle web preview capability." },
+      version_number: { type: Type.NUMBER, description: "Optional explicit version number. If omitted, backend will auto‑increment." },
     },
     required: ["path", "new_content"],
   },
@@ -367,6 +414,53 @@ export const playgroundReadTools = [
 ];
 
 /**
+ * List versions of a canvas file and optionally read a specific version.
+ */
+export const canvasListVersionsTool: FunctionDeclaration = {
+  name: "canvas_list_versions",
+  description: "List all saved versions for a canvas file (most recent first).",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      path: { type: Type.STRING, description: "Path of the canvas file." },
+      limit: { type: Type.NUMBER, description: "Optional max versions to return (default 20)." },
+    },
+    required: ["path"],
+  },
+};
+
+export const canvasReadVersionTool: FunctionDeclaration = {
+  name: "canvas_read_version",
+  description: "Read a specific version of a canvas file by version_number.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      path: { type: Type.STRING, description: "Path of the canvas file." },
+      version_number: { type: Type.NUMBER, description: "The version number to retrieve." },
+      max_bytes: { type: Type.NUMBER, description: "Optional max bytes to read for large files." },
+    },
+    required: ["path", "version_number"],
+  },
+};
+
+export const canvasRestoreVersionTool: FunctionDeclaration = {
+  name: "canvas_restore_version",
+  description: "Restore a previous version into the current canvas file (creates a new version).",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      path: { type: Type.STRING, description: "Path of the canvas file." },
+      version_number: { type: Type.NUMBER, description: "The version to restore into the current file." },
+    },
+    required: ["path", "version_number"],
+  },
+};
+
+playgroundReadTools.push(canvasListVersionsTool);
+playgroundReadTools.push(canvasReadVersionTool);
+playgroundReadTools.push(canvasRestoreVersionTool);
+
+/**
  * Composite tool: Implement a feature by updating a canvas file and marking a todo task as done.
  */
 export const implementFeatureAndUpdateTodoTool: FunctionDeclaration = {
@@ -379,6 +473,11 @@ export const implementFeatureAndUpdateTodoTool: FunctionDeclaration = {
       task_id: { type: Type.STRING, description: "ID of the task to mark as done." },
       path: { type: Type.STRING, description: "File path to update (single-edit fallback)." },
       new_content: { type: Type.STRING, description: "New content to write into the file (single-edit fallback)." },
+      // Optional metadata for the canvas file (applies to create/update of the single-file canvas)
+      description: { type: Type.STRING, description: "Optional short title/description for the canvas file." },
+      file_type: { type: Type.STRING, description: "Optional file type ('code' | 'document'). If omitted, inferred by extension (md/txt => document)." },
+      can_implement_in_canvas: { type: Type.BOOLEAN, description: "Optional flag to indicate if the file can be previewed/executed in the Canvas WebView (e.g., index.html)." },
+      version_number: { type: Type.NUMBER, description: "Optional explicit version number for this update. Normally omit to auto‑increment." },
       edits: {
         type: Type.ARRAY,
         description: "Optional array of file edits to apply in one call (agent/builder mode).",
@@ -478,6 +577,12 @@ export function buildToolboxGuidance(functionDeclarations: Array<FunctionDeclara
     }
     if (names.has('enhance_image')) {
       lines.push("- enhance_image: Improve or edit an existing image given an instruction and source.");
+    }
+    if (names.has('lint_check')) {
+      lines.push("- lint_check: Quick, non-LLM static pass to catch obvious syntax problems (unbalanced (), {}, [], or quotes). Run this frequently after edits.");
+    }
+    if (names.has('analyze_code')) {
+      lines.push("- analyze_code: Review a file/snippet and return concise issues and suggestions. Pass issuesToDiagnose for targeted debugging; otherwise do a general pass.");
     }
 
     if (lines.length === 0) return '';

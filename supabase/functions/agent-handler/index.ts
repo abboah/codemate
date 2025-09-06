@@ -10,6 +10,8 @@ import {
   analyzeDocumentTool,
   implementFeatureAndUpdateTodoTool,
   buildToolboxGuidance,
+  lintCheckTool,
+  analyzeCodeTool,
 } from "../_shared/tools.ts";
 
 const corsHeaders = {
@@ -266,6 +268,9 @@ serve(async (req) => {
       artifactReadTool,
       analyzeDocumentTool,
       implementFeatureAndUpdateTodoTool,
+      // Quality tools available to agents
+      lintCheckTool,
+      analyzeCodeTool,
     ];
 
     // Helper to execute agent artifact tools against agent_artifacts table
@@ -477,7 +482,7 @@ serve(async (req) => {
     const attachmentsJson = JSON.stringify(usable, null, 2);
     return `\n\nATTACHMENTS CONTEXT\n- Use ONLY the exact value of file_uri from the JSON list below.\n- DO NOT pass file names or local paths as file_uri.\n- Call analyze_document like: { file_uri: "<exact file_uri>", mime_type: "<mime>" }.\n- If unsure which to pick, ask the user.\n\nattachments =\n\n\`\`\`json\n${attachmentsJson}\n\`\`\`\n Besides these, if the user manually adds a link in the prompt, analyze that too.`;
   })();
-  const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.${toolGuidance}${attachmentsNote}`;
+  const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.${toolGuidance}${attachmentsNote}\n\nQUALITY GATES\n- After batches of edits, run lint_check (fast, non‑LLM) to catch obvious syntax issues.\n- When helpful, use analyze_code for a concise review before presenting results.\n- Keep responses focused and avoid dumping huge code unless necessary.`;
 
       // Build compositional contents
       // Build history: prefer server-side last 5 turns if chatId provided
@@ -522,6 +527,8 @@ serve(async (req) => {
               artifactReadTool,
               analyzeDocumentTool,
               implementFeatureAndUpdateTodoTool,
+              lintCheckTool,
+              analyzeCodeTool,
             ] }],
             systemInstruction,
           },
@@ -630,6 +637,73 @@ serve(async (req) => {
                   } catch (err: any) {
                     toolResponse = { status: 'error', message: err?.message ?? String(err) };
                   }
+                  break;
+                }
+                case 'lint_check': {
+                  // Prefer path; else content must be provided
+                  let content = '';
+                  const maxIssues = Math.max(1, Math.min(200, Number(args.max_issues ?? 50)));
+                  if (typeof args.content === 'string' && args.content.length > 0) {
+                    content = String(args.content);
+                  } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                    const r = await supabase
+                      .from('project_files')
+                      .select('content')
+                      .eq('project_id', projectId)
+                      .eq('path', String(args.path).trim())
+                      .single();
+                    if ((r as any)?.error) throw (r as any).error;
+                    content = String((r as any)?.data?.content ?? '');
+                  } else {
+                    toolResponse = { status: 'error', message: 'Provide either path or content' };
+                    break;
+                  }
+                  const issues: Array<{ kind: string; message: string; index?: number }> = [];
+                  const pairs: Array<[string, string, string]> = [ ['paren','(',')'], ['brace','{','}'], ['bracket','[',']'] ];
+                  for (const [kind, open, close] of pairs) {
+                    let bal = 0;
+                    for (let i = 0; i < content.length; i++) {
+                      const ch = content[i];
+                      if (ch === open) bal++;
+                      else if (ch === close) bal--;
+                      if (bal < 0) { issues.push({ kind, message: `Unexpected '${close}' at ${i}`, index: i }); break; }
+                      if (issues.length >= maxIssues) break;
+                    }
+                    if (bal > 0 && issues.length < maxIssues) issues.push({ kind, message: `Unclosed '${open}' (${bal} more)` });
+                    if (issues.length >= maxIssues) break;
+                  }
+                  const quotes: Array<[string, string]> = [["\"",'double'],["'",'single'],['`','backtick']];
+                  for (const [q, label] of quotes) {
+                    const count = (content.match(new RegExp(q, 'g')) || []).length;
+                    if (count % 2 !== 0 && issues.length < maxIssues) issues.push({ kind: 'quote', message: `Unbalanced ${label} quotes` });
+                  }
+                  toolResponse = { status: 'success', issues, issue_count: issues.length };
+                  break;
+                }
+                case 'analyze_code': {
+                  let content = '';
+                  if (typeof args.content === 'string' && args.content.length > 0) {
+                    content = String(args.content);
+                  } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                    const r = await supabase
+                      .from('project_files')
+                      .select('content')
+                      .eq('project_id', projectId)
+                      .eq('path', String(args.path).trim())
+                      .single();
+                    if ((r as any)?.error) throw (r as any).error;
+                    content = String((r as any)?.data?.content ?? '');
+                  } else { toolResponse = { status: 'error', message: 'Provide either path or content' }; break; }
+                  const max = typeof args.max_bytes === 'number' ? Math.max(0, Math.trunc(args.max_bytes)) : 0;
+                  if (max > 0 && content.length > max) content = content.slice(0, max);
+                  const language = typeof args.language === 'string' ? String(args.language) : '';
+                  const issue = typeof args.issuesToDiagnose === 'string' ? String(args.issuesToDiagnose).trim() : '';
+                  const instruction = issue
+                    ? `You are a senior software engineer. Diagnose and propose fixes for the following issue in the provided code${language ? ` (${language})` : ''}: "${issue}". Provide 5-10 bullet points: likely causes, concrete fixes with references to lines/sections, and quick sanity checks/tests to validate. Keep it concise and actionable.`
+                    : `You are a strict code reviewer. In 6-10 bullet points, list potential errors, risky patterns, and suggestions to improve the code${language ? ` (${language})` : ''}. Keep it concise, concrete, and actionable.`;
+                  const modelForAnalysis = issue ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+                  const analysis = await ai.models.generateContent({ model: modelForAnalysis, contents: createUserContent([ instruction, content.slice(0, 16000) ]) });
+                  toolResponse = { status: 'success', summary: analysis.text ?? '', focused_on_issue: issue || undefined, model: modelForAnalysis };
                   break;
                 }
                 case 'create_file': {
@@ -838,7 +912,7 @@ serve(async (req) => {
               const attachmentsJson = JSON.stringify(usable, null, 2);
               return `\n\nATTACHMENTS CONTEXT\n- Use ONLY the exact value of file_uri from the JSON list below.\n- DO NOT pass file names or local paths as file_uri.\n- Call analyze_document like: { file_uri: "<exact file_uri>", mime_type: "<mime>" }.\n- If unsure which to pick, ask the user.\n\nattachments =\n\n\`\`\`json\n${attachmentsJson}\n\`\`\`\n`;
             })();
-            const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.${buildToolboxGuidance(functionDeclarations)}${attachmentsNote}\n\nNOTE:\n- Do not start a response with labels like 'Robin:', 'AI:', or 'Assistant:'. If you introduce yourself, do it only at the start of the conversation.${artifactsList}`;
+            const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.${buildToolboxGuidance(functionDeclarations)}${attachmentsNote}\n\nQUALITY GATES\n- After batches of edits, run lint_check (fast, non‑LLM) to catch obvious syntax issues.\n- When helpful, use analyze_code for a concise review before presenting results.\n- Keep responses focused and avoid dumping huge code unless necessary.\n\nNOTE:\n- Do not start a response with labels like 'Robin:', 'AI:', or 'Assistant:'. If you introduce yourself, do it only at the start of the conversation.${artifactsList}`;
 
             const contents: any[] = Array.isArray(history) && history.length > 0 ? [...history] : [];
             contents.push({ role: 'user', parts: [{ text: prompt }] });
@@ -870,6 +944,8 @@ serve(async (req) => {
                       artifactReadTool,
                       analyzeDocumentTool,
                       implementFeatureAndUpdateTodoTool,
+                      lintCheckTool,
+                      analyzeCodeTool,
                     ] }],
                     systemInstruction,
                     ...(includeThoughts ? { thinkingConfig: { thinkingBudget: -1, includeThoughts: true } } : {}),
@@ -923,6 +999,8 @@ serve(async (req) => {
                         artifactReadTool,
                         analyzeDocumentTool,
                         implementFeatureAndUpdateTodoTool,
+                        lintCheckTool,
+                        analyzeCodeTool,
                       ] }],
                       systemInstruction,
                       ...(includeThoughts ? { thinkingConfig: {thinkingBudget: -1, includeThoughts: true } } : {}),

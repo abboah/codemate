@@ -89,7 +89,7 @@ serve(async (req) => {
       return '';
     }
 
-    async function resolveBestUrl(args: any, list: any[]): Promise<{ url: string; source: string }> {
+  async function resolveBestUrl(args: any, list: any[]): Promise<{ url: string; source: string }> {
       const prefer = (f: any) => f?.signedUrl || f?.publicUrl || f?.url || f?.bucket_url || '';
       let alias = '';
       let url = typeof args?.file_uri === 'string' ? String(args.file_uri) : '';
@@ -129,7 +129,7 @@ serve(async (req) => {
       return resp;
     }
 
-    async function parseSupabaseStorageError(resp: Response): Promise<{ code?: string; message?: string; raw?: string }>{
+  async function parseSupabaseStorageError(resp: Response): Promise<{ code?: string; message?: string; raw?: string }>{
       try {
         const txt = await resp.text();
         try {
@@ -314,6 +314,155 @@ serve(async (req) => {
 
   async function executeTool(name: string, args: Record<string, any>, effectiveChatId: string, opts?: { attachments?: any[] }): Promise<any> {
       switch (name) {
+        case 'lint_check': {
+          // Lightweight, non-LLM lint: operate on provided content or canvas file by path
+          const maxIssues = Math.max(1, Math.min(200, Number(args.max_issues ?? 50)));
+          let content = '';
+          if (typeof args.content === 'string' && args.content.length > 0) {
+            content = String(args.content);
+          } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+            const r = await supabase
+              .from('canvas_files')
+              .select('content')
+              .match({ chat_id: effectiveChatId, path: String(args.path).trim() })
+              .single();
+            if ((r as any)?.error) return { status: 'error', message: (r as any).error.message };
+            content = String((r as any)?.data?.content ?? '');
+          } else {
+            return { status: 'error', message: 'Provide either path or content' };
+          }
+          const issues: Array<{ kind: string; message: string; index?: number }> = [];
+          const pairs: Array<[string, string, string]> = [
+            ['paren', '(', ')'],
+            ['brace', '{', '}'],
+            ['bracket', '[', ']'],
+          ];
+          for (const [kind, open, close] of pairs) {
+            let bal = 0;
+            for (let i = 0; i < content.length; i++) {
+              const ch = content[i];
+              if (ch === open) bal++;
+              else if (ch === close) bal--;
+              if (bal < 0) { issues.push({ kind, message: `Unexpected '${close}' at ${i}`, index: i }); break; }
+              if (issues.length >= maxIssues) break;
+            }
+            if (bal > 0 && issues.length < maxIssues) issues.push({ kind, message: `Unclosed '${open}' (${bal} more)` });
+            if (issues.length >= maxIssues) break;
+          }
+          // Simple quote balance (not perfect but helpful)
+          const quotes: Array<[string, string]> = [['"', 'double'], ['\'', 'single'], ['`', 'backtick']];
+          for (const [q, label] of quotes) {
+            const count = (content.match(new RegExp(q, 'g')) || []).length;
+            if (count % 2 !== 0 && issues.length < maxIssues) issues.push({ kind: 'quote', message: `Unbalanced ${label} quotes` });
+          }
+          return { status: 'success', issues, issue_count: issues.length };
+        }
+        case 'analyze_code': {
+          // Use a lightweight model to summarize potential issues
+          let content = '';
+          if (typeof args.content === 'string' && args.content.length > 0) {
+            content = String(args.content);
+          } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+            const r = await supabase
+              .from('canvas_files')
+              .select('content')
+              .match({ chat_id: effectiveChatId, path: String(args.path).trim() })
+              .single();
+            if ((r as any)?.error) return { status: 'error', message: (r as any).error.message };
+            content = String((r as any)?.data?.content ?? '');
+          } else {
+            return { status: 'error', message: 'Provide either path or content' };
+          }
+          const max = typeof args.max_bytes === 'number' ? Math.max(0, Math.trunc(args.max_bytes)) : 0;
+          if (max > 0 && content.length > max) content = content.slice(0, max);
+          const language = typeof args.language === 'string' ? String(args.language) : '';
+          const issue = typeof args.issuesToDiagnose === 'string' ? String(args.issuesToDiagnose).trim() : '';
+          const instruction = issue
+            ? `You are a senior software engineer. Diagnose and propose fixes for the following issue in the provided code${language ? ` (${language})` : ''}: "${issue}". Provide 5-10 bullet points: likely causes, concrete fixes with references to lines/sections, and quick sanity checks/tests to validate. Keep it concise and actionable.`
+            : `You are a strict code reviewer. In 6-10 bullet points, list potential errors, risky patterns, and suggestions to improve the code${language ? ` (${language})` : ''}. Keep it concise, concrete, and actionable.`;
+          const modelForAnalysis = issue ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+          const resp = await ai.models.generateContent({ model: modelForAnalysis, contents: createUserContent([ instruction, content.slice(0, 16000) ]) });
+          return { status: 'success', summary: resp.text ?? '', focused_on_issue: issue || undefined, model: modelForAnalysis };
+        }
+        case 'canvas_list_versions': {
+          const path = String(args.path ?? '').trim();
+          if (!path) return { status: 'error', message: 'path is required' };
+          const limit = Math.max(1, Math.min(100, Number(args.limit ?? 20)));
+          const { data: fileRow, error: fErr } = await supabase
+            .from('canvas_files')
+            .select('id, chat_id')
+            .match({ chat_id: effectiveChatId, path })
+            .single();
+          if (fErr) return { status: 'error', message: fErr.message };
+          const { data, error } = await supabase
+            .from('canvas_file_versions')
+            .select('version_number, created_at, description, file_type, can_implement_in_canvas')
+            .eq('file_id', (fileRow as any).id)
+            .order('version_number', { ascending: false })
+            .limit(limit);
+          if (error) return { status: 'error', message: error.message };
+          return { status: 'success', path, versions: data ?? [] };
+        }
+        case 'canvas_read_version': {
+          const path = String(args.path ?? '').trim();
+          const ver = Number(args.version_number);
+          if (!path || !Number.isFinite(ver)) return { status: 'error', message: 'path and version_number are required' };
+          const { data: fileRow, error: fErr } = await supabase
+            .from('canvas_files')
+            .select('id')
+            .match({ chat_id: effectiveChatId, path })
+            .single();
+          if (fErr) return { status: 'error', message: fErr.message };
+          const { data, error } = await supabase
+            .from('canvas_file_versions')
+            .select('content, description, file_type, can_implement_in_canvas, version_number, created_at')
+            .eq('file_id', (fileRow as any).id)
+            .eq('version_number', ver)
+            .single();
+          if (error) return { status: 'error', message: error.message };
+          const max = typeof args.max_bytes === 'number' ? args.max_bytes : undefined;
+          let content: string = (data as any)?.content ?? '';
+          if (typeof max === 'number' && max > 0 && content.length > max) content = content.slice(0, max);
+          return { status: 'success', path, version_number: ver, content, description: (data as any)?.description ?? null, file_type: (data as any)?.file_type ?? null, can_implement_in_canvas: !!(data as any)?.can_implement_in_canvas };
+        }
+        case 'canvas_restore_version': {
+          const path = String(args.path ?? '').trim();
+          const ver = Number(args.version_number);
+          if (!path || !Number.isFinite(ver)) return { status: 'error', message: 'path and version_number are required' };
+          const { data: fileRow, error: fErr } = await supabase
+            .from('canvas_files')
+            .select('id, version_number')
+            .match({ chat_id: effectiveChatId, path })
+            .single();
+          if (fErr) return { status: 'error', message: fErr.message };
+          const { data: verRow, error: vErr } = await supabase
+            .from('canvas_file_versions')
+            .select('content, description, file_type, can_implement_in_canvas')
+            .eq('file_id', (fileRow as any).id)
+            .eq('version_number', ver)
+            .single();
+          if (vErr) return { status: 'error', message: vErr.message };
+          // Update current file content to that version; autoincrement handled by existing logic if present,
+          // but we explicitly set next version_number = current + 1
+          const nextVersion = Math.max(1, Number((fileRow as any).version_number ?? 1) + 1);
+          const patch: any = {
+            content: (verRow as any)?.content ?? '',
+            description: (verRow as any)?.description ?? null,
+            file_type: (verRow as any)?.file_type ?? null,
+            can_implement_in_canvas: (verRow as any)?.can_implement_in_canvas ?? false,
+            version_number: nextVersion,
+            last_modified: new Date().toISOString(),
+          };
+          const updated = await supabase
+            .from('canvas_files')
+            .update(patch)
+            .match({ chat_id: effectiveChatId, path })
+            .select('id, path, content, description, file_type, can_implement_in_canvas, version_number')
+            .single();
+          if ((updated as any)?.error) return { status: 'error', message: (updated as any).error.message };
+          const row = (updated as any)?.data;
+          return { status: 'success', path: row?.path, version_number: row?.version_number, content: row?.content, description: row?.description, file_type: row?.file_type, can_implement_in_canvas: !!row?.can_implement_in_canvas };
+        }
         case 'canvas_read_file_by_id': {
           const id = String(args.id ?? '').trim();
           if (!id) return { status: 'error', message: 'id is required' };
@@ -443,21 +592,32 @@ serve(async (req) => {
           const path = String(args.path ?? '').trim();
           const newContent = String(args.new_content ?? '');
           if (!artifactId || !taskId || !path) return { status: 'error', message: 'artifact_id, task_id and path are required' };
+          // Optional metadata
+          const description = (typeof args.description === 'string' && args.description.trim().length > 0) ? String(args.description).trim() : undefined;
+          const fileTypeRaw = (typeof args.file_type === 'string') ? String(args.file_type).toLowerCase() : '';
+          const fileType = (fileTypeRaw === 'code' || fileTypeRaw === 'document') ? fileTypeRaw : undefined;
+          const canImplement = (typeof args.can_implement_in_canvas === 'boolean') ? !!args.can_implement_in_canvas : undefined;
+          const explicitVersion: number | undefined = (typeof args.version_number === 'number' && Number.isFinite(args.version_number)) ? Math.max(1, Math.trunc(args.version_number)) : undefined;
           // 1) Update existing canvas file if present; otherwise only create if none exist in this chat
           let canvasRow: any | null = null;
           let mode: 'updated' | 'created' = 'updated';
           {
             const { data: existing } = await supabase
               .from('canvas_files')
-              .select('id, path, content')
+              .select('id, path, content, version_number')
               .match({ chat_id: effectiveChatId, path })
               .maybeSingle();
             if (existing) {
+              const nextVersion = explicitVersion ?? Math.max(1, Number((existing as any).version_number ?? 1) + 1);
+              const patch: any = { content: newContent, last_modified: new Date().toISOString(), version_number: nextVersion };
+              if (description !== undefined) patch.description = description;
+              if (fileType !== undefined) patch.file_type = fileType;
+              if (canImplement !== undefined) patch.can_implement_in_canvas = canImplement;
               const updated = await supabase
                 .from('canvas_files')
-                .update({ content: newContent, last_modified: new Date().toISOString() })
+                .update(patch)
                 .match({ chat_id: effectiveChatId, path })
-                .select('id, path, content')
+                .select('id, path, content, description, file_type, can_implement_in_canvas, version_number')
                 .single();
               if ((updated as any)?.error) return { status: 'error', message: (updated as any).error.message };
               canvasRow = (updated as any)?.data;
@@ -476,10 +636,19 @@ serve(async (req) => {
                   .order('last_modified', { ascending: false });
                 return { status: 'error', message: 'A canvas file already exists for this chat. Update an existing file instead of creating a new one.', available_paths: (list ?? []).map((r: any) => r.path) };
               }
+              const toInsert: any = { chat_id: effectiveChatId, path, content: newContent };
+              if (description !== undefined) toInsert.description = description;
+              // Infer type if not provided
+              if (fileType !== undefined) toInsert.file_type = fileType; else {
+                const lower = path.toLowerCase();
+                if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt')) toInsert.file_type = 'document'; else toInsert.file_type = 'code';
+              }
+              if (canImplement !== undefined) toInsert.can_implement_in_canvas = canImplement; else toInsert.can_implement_in_canvas = (path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm'));
+              if (explicitVersion !== undefined) toInsert.version_number = explicitVersion;
               const inserted = await supabase
                 .from('canvas_files')
-                .insert({ chat_id: effectiveChatId, path, content: newContent })
-                .select('id, path, content')
+                .insert(toInsert)
+                .select('id, path, content, description, file_type, can_implement_in_canvas, version_number')
                 .single();
               if ((inserted as any)?.error) return { status: 'error', message: (inserted as any).error.message };
               canvasRow = (inserted as any)?.data;
@@ -508,7 +677,7 @@ serve(async (req) => {
             .update({ data: updated, last_modified: new Date().toISOString() })
             .eq('id', artifactId);
           if (updErr) return { status: 'error', message: updErr.message };
-          return { status: 'success', mode, canvas_file: { id: canvasRow?.id, path: canvasRow?.path, content: String(canvasRow?.content ?? '') }, artifact_id: artifactId, task_id: taskId, task_title: taskTitle };
+          return { status: 'success', mode, canvas_file: { id: canvasRow?.id, path: canvasRow?.path, content: String(canvasRow?.content ?? ''), description: canvasRow?.description ?? null, file_type: canvasRow?.file_type ?? null, can_implement_in_canvas: !!canvasRow?.can_implement_in_canvas, version_number: canvasRow?.version_number ?? 1 }, artifact_id: artifactId, task_id: taskId, task_title: taskTitle };
         }
         case 'analyze_document': {
           const instruction = String(args.instruction ?? 'Describe the image.');
@@ -685,28 +854,59 @@ serve(async (req) => {
           const path = String(args.path ?? '').trim();
           const content = String(args.content ?? '');
           if (!path) return { status: 'error', message: 'path is required' };
+          // Optional metadata
+          const description = (typeof args.description === 'string' && args.description.trim().length > 0)
+            ? String(args.description).trim()
+            : null;
+          let fileType = (typeof args.file_type === 'string') ? String(args.file_type).toLowerCase() : '';
+          if (fileType !== 'code' && fileType !== 'document') {
+            // Infer from extension
+            const lower = path.toLowerCase();
+            if (lower.endsWith('.md') || lower.endsWith('.markdown') || lower.endsWith('.txt')) fileType = 'document';
+            else fileType = 'code';
+          }
+          const canImplement = (typeof args.can_implement_in_canvas === 'boolean') ? !!args.can_implement_in_canvas : (path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm'));
+          const versionNumber = (typeof args.version_number === 'number' && Number.isFinite(args.version_number)) ? Math.max(1, Math.trunc(args.version_number)) : 1;
+
           const inserted = await supabase
             .from('canvas_files')
-            .insert({ chat_id: effectiveChatId, path, content })
-            .select('id, path, content')
+            .insert({ chat_id: effectiveChatId, path, content, description, file_type: fileType, can_implement_in_canvas: canImplement, version_number: versionNumber })
+            .select('id, path, content, description, file_type, can_implement_in_canvas, version_number')
             .single();
           if ((inserted as any)?.error) return { status: 'error', message: (inserted as any).error.message };
           const row = (inserted as any)?.data;
-          return { status: 'success', id: row?.id, path: row?.path, content: String(row?.content ?? '') };
+          return { status: 'success', id: row?.id, path: row?.path, content: String(row?.content ?? ''), description: row?.description ?? null, file_type: row?.file_type ?? null, can_implement_in_canvas: !!row?.can_implement_in_canvas, version_number: row?.version_number ?? 1 };
         }
         case 'canvas_update_file_content': {
           const path = String(args.path ?? '').trim();
           const newContent = String(args.new_content ?? '');
           if (!path) return { status: 'error', message: 'path is required' };
+          // Fetch current to compute next version if needed
+          const current = await supabase
+            .from('canvas_files')
+            .select('id, version_number')
+            .match({ chat_id: effectiveChatId, path })
+            .single();
+          if ((current as any)?.error) return { status: 'error', message: (current as any).error.message };
+          const cur = (current as any)?.data;
+          const explicitVersion = (typeof args.version_number === 'number' && Number.isFinite(args.version_number)) ? Math.max(1, Math.trunc(args.version_number)) : undefined;
+          const nextVersion = explicitVersion ?? Math.max(1, (Number(cur?.version_number ?? 1) + 1));
+          const patch: any = { content: newContent, last_modified: new Date().toISOString(), version_number: nextVersion };
+          if (typeof args.description === 'string' && args.description.trim().length > 0) patch.description = String(args.description).trim();
+          if (typeof args.file_type === 'string') {
+            const v = String(args.file_type).toLowerCase();
+            if (v === 'code' || v === 'document') patch.file_type = v;
+          }
+          if (typeof args.can_implement_in_canvas === 'boolean') patch.can_implement_in_canvas = !!args.can_implement_in_canvas;
           const updated = await supabase
             .from('canvas_files')
-            .update({ content: newContent, last_modified: new Date().toISOString() })
+            .update(patch)
             .match({ chat_id: effectiveChatId, path })
-            .select('id, path, content')
+            .select('id, path, content, description, file_type, can_implement_in_canvas, version_number')
             .single();
           if ((updated as any)?.error) return { status: 'error', message: (updated as any).error.message };
           const row = (updated as any)?.data;
-          return { status: 'success', id: row?.id, path: row?.path, content: String(row?.content ?? '') };
+          return { status: 'success', id: row?.id, path: row?.path, content: String(row?.content ?? ''), description: row?.description ?? null, file_type: row?.file_type ?? null, can_implement_in_canvas: !!row?.can_implement_in_canvas, version_number: row?.version_number ?? nextVersion };
         }
         case 'canvas_delete_file': {
           const path = String(args.path ?? '').trim();
@@ -718,14 +918,14 @@ serve(async (req) => {
         case 'canvas_read_file': {
           const path = String(args.path ?? '').trim();
           if (!path) return { status: 'error', message: 'path is required' };
-          const { data, error } = await supabase.from('canvas_files').select('path, content').match({ chat_id: effectiveChatId, path }).single();
+          const { data, error } = await supabase.from('canvas_files').select('path, content, description, file_type, can_implement_in_canvas, version_number').match({ chat_id: effectiveChatId, path }).single();
           if (error) return { status: 'error', message: error.message };
           let content: string = data?.content ?? '';
           const max = typeof args.max_bytes === 'number' ? args.max_bytes : undefined;
           if (typeof max === 'number' && max > 0 && content.length > max) {
             content = content.slice(0, max);
           }
-          return { status: 'success', path, content };
+          return { status: 'success', path, content, description: data?.description ?? null, file_type: data?.file_type ?? null, can_implement_in_canvas: !!data?.can_implement_in_canvas, version_number: data?.version_number ?? 1 };
         }
         case 'canvas_search': {
           const query = String(args.query ?? '').toLowerCase();
@@ -774,9 +974,9 @@ serve(async (req) => {
         }
       } catch (_) { /* ignore */ }
       const toolbox = buildToolboxGuidance([...playgroundTools, ...playgroundCanvasTools, ...playgroundReadTools, ...playgroundCompositeTools]);
-      const hardRules = `\n\nHARD CONSTRAINTS (Playground Canvas)\n• Single-file policy: Keep the entire app in ONE canvas file. Inline CSS and JS if needed.\n• Do NOT create a new canvas file if any canvas file already exists for this chat. Always update the existing file.\n• Prefer implement_feature_and_update_todo (or canvas_update_file_content) over canvas_create_file when a canvas exists.\n• If you attempt to create a second file, expect an error and immediately switch to updating the available path(s).\n• Be supportive and friendly. Explain what you’re doing briefly and keep the user informed.\n• When the user asks to build a project, prioritize: (1) todo_list_create to plan tasks, then (2) implement_feature_and_update_todo to implement each task and mark it done.`;
-      const oneShot = `\n\nONE-SHOT EXAMPLE\nUser: \"Build a simple quote generator website with separate HTML, CSS, and JS files.\"\nAssistant (thought): The Playground uses a single-file canvas. I’ll embed HTML, CSS, and JS in one file and update that file.\nAssistant (tools):\n1) todo_list_create → Create tasks: setup HTML structure, add styles, implement JS logic.\n2) implement_feature_and_update_todo(path: 'index.html', new_content: '<!doctype html>...<style>/* CSS */</style><script>/* JS */</script>...', artifact_id: '...', task_id: '...') → Update single file and mark task done.\nAssistant: I’ve implemented the quote generator in one file (index.html) with inline CSS and JS. Next, I’ll complete the remaining tasks similarly.`;
-      const guidance = `You are Robin, a powerful AI assistant in \'Playground mode\', a place where users experiement and prototype their project ideas .\n- Prefer web-first solutions (React or HTML/CSS/JS) unless the user specifically requests another stack or web is unsuitable.\n- Use tools when needed instead of fabricating results.\n- When creating simple web features that can run in a single file, prefer making self-contained components suitable for Canvas preview.\n- Do not dump large JSON inline unless asked. Summarize and store structured outputs as artifacts when appropriate.${hardRules}${oneShot}${toolbox}\n${artifactsList}`;
+  const hardRules = `\n\nHARD CONSTRAINTS (Playground Canvas)\n• Single-file policy: Keep the entire app in ONE canvas file. Inline CSS and JS if needed.\n• Do NOT create a new canvas file if any canvas file already exists for this chat. Always update the existing file.\n• Prefer implement_feature_and_update_todo (or canvas_update_file_content) over canvas_create_file when a canvas exists.\n• If you attempt to create a second file, expect an error and immediately switch to updating the available path(s).\n• Be supportive and friendly. Explain what you’re doing briefly and keep the user informed.\n• When the user asks to build a project, prioritize: (1) todo_list_create to plan tasks, then (2) implement_feature_and_update_todo to implement each task and mark it done.\n\nCHECKPOINTING (Canvas Versions)\n• The system snapshots the canvas file into canvas_file_versions automatically on create/update/restore.\n• Strict rule: only the FIRST feature you implement from a todo list in a given turn should bump the version. Subsequent features in the same batch should NOT bump versions unless the user explicitly requests a new version.\n• Between turns: when the user asks for the next feature after you’ve already implemented the previous one, update the canvas and that update becomes the next version.\n• Do NOT bump versions for minor tweaks within the same feature cycle unless the user explicitly calls it out as a new feature.\n• Use canvas_list_versions and canvas_read_version to inspect/compare prior work. Use canvas_restore_version only if the user requests reverting.\n\nQUALITY GATES\n• After a set of edits, use lint_check (quick, non‑LLM) to catch obvious syntax mistakes.\n• When helpful, use analyze_code to get a concise review before presenting results.\n• Keep responses concise and avoid dumping huge code unless necessary.\n\nARTIFACT ACCESS (Robust Retrieval)\n• Always ensure access to previous artifacts (e.g., todo list, project card preview, images) by: \n  1) Reading recent DB state via tools and keeping concise context reminders when starting a new turn.\n  2) When an artifact is referenced by name/ID, but missing in context, re-fetch: prefer artifact_read (by id) or query previews where available.\n  3) If an artifact was uploaded by the user, ensure a stable URL: if only a storage path is known, request a signed URL or upload again via provided tools.\n• If you detect missing context, explicitly retrieve it before proceeding, rather than guessing.\n• Summarize essential artifact details inline when relevant (title, id), but store large payloads as artifacts.`;
+  const oneShot = `\n\nONE-SHOT EXAMPLE\nUser: \"Build a simple quote generator website with separate HTML, CSS, and JS files.\"\nAssistant (thought): The Playground uses a single-file canvas. I’ll embed HTML, CSS, and JS in one file and update that file.\nAssistant (tools):\n1) todo_list_create → Create tasks: setup HTML structure, add styles, implement JS logic.\n2) implement_feature_and_update_todo(path: 'index.html', new_content: '<!doctype html>...<style>/* CSS */</style><script>/* JS */</script>...', artifact_id: '...', task_id: '...') → Update single file and mark task done.\n3) User: \"Make the button green and add fade-in.\" → implement_feature_and_update_todo(path: 'index.html', new_content: '<!doctype html>... (updated styles/JS) ...</script>', description: 'Make CTA green + fade-in', can_implement_in_canvas: true) → This update becomes the next version automatically at the NEXT feature request.\n4) Before finalizing, lint_check(path: 'index.html') to catch obvious syntax issues; if needed, analyze_code(path: 'index.html', language: 'html').\n5) (Optional) canvas_list_versions → show available versions; canvas_read_version to preview a prior version; canvas_restore_version if user requests revert.\nAssistant: I’ve implemented the quote generator in one file (index.html) with inline CSS and JS. I’ll keep versions tidy: only the first feature in a batch bumps the version.`;
+  const guidance = `You are Robin, a powerful AI assistant in \'Playground mode\', a place where users experiement and prototype their project ideas .\n- Prefer web-first solutions (React or HTML/CSS/JS) unless the user specifically requests another stack or web is unsuitable.\n- Use tools when needed instead of fabricating results.\n- When creating simple web features that can run in a single file, prefer making self-contained components suitable for Canvas preview.\n- Do not dump large JSON inline unless asked. Summarize and store structured outputs as artifacts when appropriate.${hardRules}${oneShot}${toolbox}\n${artifactsList}`;
       return guidance;
     }
 

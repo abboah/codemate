@@ -55,6 +55,8 @@ dependencies:
   flutter_code_editor: ^0.3.4
   flutter_mentions: ^2.0.1
   http: ^1.2.2
+  webview_flutter: ^4.8.0
+  webview_flutter_web: ^0.2.2
 
 dev_dependencies:
   flutter_test:
