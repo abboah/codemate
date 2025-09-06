@@ -161,11 +161,31 @@ class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
 
 class CanvasHtmlOverlayController {
   CanvasHtmlOverlayController._();
-  static final CanvasHtmlOverlayController instance = CanvasHtmlOverlayController._();
+  static final CanvasHtmlOverlayController instance =
+      CanvasHtmlOverlayController._();
 
   final List<void Function(bool)> _listeners = [];
-  void addListener(void Function(bool) fn) { if (!_listeners.contains(fn)) _listeners.add(fn); }
-  void removeListener(void Function(bool) fn) { _listeners.remove(fn); }
-  void suspend() { for (final l in List.of(_listeners)) { try { l(true); } catch (_) {} } }
-  void resume() { for (final l in List.of(_listeners)) { try { l(false); } catch (_) {} } }
+  void addListener(void Function(bool) fn) {
+    if (!_listeners.contains(fn)) _listeners.add(fn);
+  }
+
+  void removeListener(void Function(bool) fn) {
+    _listeners.remove(fn);
+  }
+
+  void suspend() {
+    for (final l in List.of(_listeners)) {
+      try {
+        l(true);
+      } catch (_) {}
+    }
+  }
+
+  void resume() {
+    for (final l in List.of(_listeners)) {
+      try {
+        l(false);
+      } catch (_) {}
+    }
+  }
 }
