@@ -17,6 +17,25 @@ class CanvasHtmlPreview extends StatefulWidget {
 class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
   late String _viewTypeId;
   html.IFrameElement? _iframe;
+  bool _suspended = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Register for global suspend/resume notifications
+    CanvasHtmlOverlayController.instance.addListener(_onSuspendChanged);
+  }
+
+  @override
+  void dispose() {
+    CanvasHtmlOverlayController.instance.removeListener(_onSuspendChanged);
+    super.dispose();
+  }
+
+  void _onSuspendChanged(bool value) {
+    if (!mounted) return;
+    setState(() => _suspended = value);
+  }
 
   @override
   void initState() {
@@ -126,6 +145,27 @@ class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
 
   @override
   Widget build(BuildContext context) {
-    return HtmlElementView(viewType: _viewTypeId);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        HtmlElementView(viewType: _viewTypeId),
+        if (_suspended)
+          IgnorePointer(
+            ignoring: true,
+            child: Container(color: Colors.transparent),
+          ),
+      ],
+    );
   }
+}
+
+class CanvasHtmlOverlayController {
+  CanvasHtmlOverlayController._();
+  static final CanvasHtmlOverlayController instance = CanvasHtmlOverlayController._();
+
+  final List<void Function(bool)> _listeners = [];
+  void addListener(void Function(bool) fn) { if (!_listeners.contains(fn)) _listeners.add(fn); }
+  void removeListener(void Function(bool) fn) { _listeners.remove(fn); }
+  void suspend() { for (final l in List.of(_listeners)) { try { l(true); } catch (_) {} } }
+  void resume() { for (final l in List.of(_listeners)) { try { l(false); } catch (_) {} } }
 }

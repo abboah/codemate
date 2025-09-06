@@ -161,6 +161,10 @@ class PlaygroundState extends ChangeNotifier {
 
   Future<void> loadChat(String chatId) async {
     this.chatId = chatId;
+    // Reset any temporary version preview state on chat switch
+    previewVersionNumber = null;
+    selectedCanvasVersions = const [];
+    _versionContentCache.clear();
     // Load chat title
     try {
       final row =
@@ -194,10 +198,26 @@ class PlaygroundState extends ChangeNotifier {
           ),
         ),
       );
-    // Load canvas files for this chat
+    // Load canvas files for this chat and open the most recent file if available
     try {
       await fetchCanvasFiles();
-    } catch (_) {}
+      if (canvasFiles.isNotEmpty) {
+        // Pick latest by last_modified (desc)
+        canvasFiles.sort((a, b) {
+          final as = (a['last_modified'] as String?) ?? '';
+          final bs = (b['last_modified'] as String?) ?? '';
+          return bs.compareTo(as);
+        });
+        final latestPath = canvasFiles.first['path'] as String?;
+        if (latestPath != null) {
+          await openCanvasFile(latestPath);
+        }
+      } else {
+        closeCanvas();
+      }
+    } catch (_) {
+      closeCanvas();
+    }
     // Load artifacts for this chat
     try {
       await fetchArtifacts();

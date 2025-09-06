@@ -10,3 +10,13 @@ class CanvasHtmlPreview extends StatelessWidget {
     );
   }
 }
+
+// No-op overlay controller for non-web builds so callers can safely suspend/resume
+class CanvasHtmlOverlayController {
+  CanvasHtmlOverlayController._();
+  static final CanvasHtmlOverlayController instance = CanvasHtmlOverlayController._();
+  void addListener(void Function(bool) fn) {}
+  void removeListener(void Function(bool) fn) {}
+  void suspend() {}
+  void resume() {}
+}
