@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { GoogleGenAI, createPartFromUri } from "https://esm.sh/@google/genai";
-import { projectCardPreviewTool, todoListCreateTool, todoListCheckTool, artifactReadTool, buildToolboxGuidance, analyzeDocumentTool } from "../_shared/tools.ts";
+import { projectCardPreviewTool, todoListCreateTool, todoListCheckTool, artifactReadTool, buildToolboxGuidance, analyzeDocumentTool, lintCheckTool, analyzeCodeTool } from "../_shared/tools.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -356,6 +356,8 @@ serve(async (req) => {
       todoListCheckTool,
       artifactReadTool,
       analyzeDocumentTool,
+      lintCheckTool,
+      analyzeCodeTool,
     ];
 
   async function runOnce(modelName: string): Promise<{ text: string; fileEdits: any[]; filesAnalyzed?: any[]; artifactIds?: string[] }> {
@@ -391,7 +393,7 @@ serve(async (req) => {
         return `\n\nATTACHMENTS CONTEXT\n- Use ONLY the exact value of file_uri from the JSON list below.\n- DO NOT pass file names or local paths as file_uri.\n- Call analyze_document like: { file_uri: "<exact file_uri>", mime_type: "<mime>" }.\n- If unsure which to pick, ask the user.\n\nattachments =\n\n\`\`\`json\n${attachmentsJson}\n\`\`\`\n`;
       })();
 
-  const toolGuidance = `\n\nTOOLS AND WHEN TO USE THEM:\n- read_file: Read exact file content or metadata like line count.\n- search: Search across many files for a query, when you don’t know exact files.\n- project_card_preview: Summarize scope/ideas as an artifact.\n- todo_list_create: Break work into actionable tasks as an artifact.\n- todo_list_check: Mark task(s) done; optionally include brief context.\n- artifact_read: Recall an artifact by id.\n- analyze_document: Analyze an attached document/image via URL with a clear instruction.\n\nBEHAVIOR:\n- Prefer read/search before proposing edits.\n- Keep responses concise and actionable.\n- Do not prefix replies with 'Robin:' or similar.`;
+  const toolGuidance = `\n\nTOOLS AND WHEN TO USE THEM:\n- read_file: Read exact file content or metadata like line count.\n- search: Search across many files for a query, when you don’t know exact files.\n- project_card_preview: Summarize scope/ideas as an artifact.\n- todo_list_create: Break work into actionable tasks as an artifact.\n- todo_list_check: Mark task(s) done; optionally include brief context.\n- artifact_read: Recall an artifact by id.\n- analyze_document: Analyze an attached document/image via URL with a clear instruction.\n- lint_check: Quick, non‑LLM static pass to catch obvious syntax problems after edits.\n- analyze_code: Lightweight model review for concise issues/suggestions after batches of changes.\n\nBEHAVIOR:\n- Prefer read/search before proposing edits.\n- Keep responses concise and actionable.\n- Do not prefix replies with 'Robin:' or similar.`;
   const localAskFunctionDeclarations = [
     { name: 'read_file' },
     { name: 'search' },
@@ -400,6 +402,8 @@ serve(async (req) => {
     todoListCheckTool,
     artifactReadTool,
     analyzeDocumentTool,
+    lintCheckTool,
+    analyzeCodeTool,
   ];
   const systemInstruction = `You are Robin, an expert AI software development assistant working inside a multi-pane IDE. Always identify yourself as Robin.\nCurrent project: ${projectName}.\n Project description: ${projectDescription}. \n Stack for the project: ${projectStack.map((s: string) => `- ${s}`).join('\n')}\n\n Project files (${filePaths.length}):\n${filePaths.map((p: string) => `- ${p}`).join('\n')}\n\n Assist the user with requests in the context of the project.${buildToolboxGuidance(localAskFunctionDeclarations)}${attachmentsNote}`;
 
@@ -462,6 +466,8 @@ serve(async (req) => {
                 todoListCheckTool,
                 artifactReadTool,
                 analyzeDocumentTool,
+                lintCheckTool,
+                analyzeCodeTool,
               ],
             }],
             systemInstruction,
@@ -539,6 +545,70 @@ serve(async (req) => {
                   }
                   // Collect for non-stream clients
                   try { filesAnalyzed.push(toolResponse); } catch (_) {}
+                  break;
+                }
+                case 'lint_check': {
+                  // Provide either content or path (reads from project_files)
+                  let content = '';
+                  const maxIssues = Math.max(1, Math.min(200, Number(args.max_issues ?? 50)));
+                  if (typeof args.content === 'string' && args.content.length > 0) {
+                    content = String(args.content);
+                  } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                    const r = await supabase
+                      .from('project_files')
+                      .select('content')
+                      .eq('project_id', projectId)
+                      .eq('path', String(args.path).trim())
+                      .single();
+                    if ((r as any)?.error) throw (r as any).error;
+                    content = String((r as any)?.data?.content ?? '');
+                  } else { toolResponse = { status: 'error', message: 'Provide either path or content' }; break; }
+                  const issues: Array<{ kind: string; message: string; index?: number }> = [];
+                  const pairs: Array<[string, string, string]> = [['paren','(',')'], ['brace','{','}'], ['bracket','[',']']];
+                  for (const [kind, open, close] of pairs) {
+                    let bal = 0;
+                    for (let i = 0; i < content.length; i++) {
+                      const ch = content[i];
+                      if (ch === open) bal++;
+                      else if (ch === close) bal--;
+                      if (bal < 0) { issues.push({ kind, message: `Unexpected '${close}' at ${i}`, index: i }); break; }
+                      if (issues.length >= maxIssues) break;
+                    }
+                    if (bal > 0 && issues.length < maxIssues) issues.push({ kind, message: `Unclosed '${open}' (${bal} more)` });
+                    if (issues.length >= maxIssues) break;
+                  }
+                  const quotes: Array<[string, string]> = [["\"",'double'],["'",'single'],['`','backtick']];
+                  for (const [q, label] of quotes) {
+                    const count = (content.match(new RegExp(q, 'g')) || []).length;
+                    if (count % 2 !== 0 && issues.length < maxIssues) issues.push({ kind: 'quote', message: `Unbalanced ${label} quotes` });
+                  }
+                  toolResponse = { status: 'success', issues, issue_count: issues.length };
+                  break;
+                }
+                case 'analyze_code': {
+                  let content = '';
+                  if (typeof args.content === 'string' && args.content.length > 0) {
+                    content = String(args.content);
+                  } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                    const r = await supabase
+                      .from('project_files')
+                      .select('content')
+                      .eq('project_id', projectId)
+                      .eq('path', String(args.path).trim())
+                      .single();
+                    if ((r as any)?.error) throw (r as any).error;
+                    content = String((r as any)?.data?.content ?? '');
+                  } else { toolResponse = { status: 'error', message: 'Provide either path or content' }; break; }
+                  const max = typeof args.max_bytes === 'number' ? Math.max(0, Math.trunc(args.max_bytes)) : 0;
+                  if (max > 0 && content.length > max) content = content.slice(0, max);
+                  const language = typeof args.language === 'string' ? String(args.language) : '';
+                  const issue = typeof args.issuesToDiagnose === 'string' ? String(args.issuesToDiagnose).trim() : '';
+                  const instruction = issue
+                    ? `You are a senior software engineer. Diagnose and propose fixes for the following issue in the provided code${language ? ` (${language})` : ''}: "${issue}". Provide 5-10 bullet points: likely causes, concrete fixes with references to lines/sections, and quick sanity checks/tests to validate. Keep it concise and actionable.`
+                    : `You are a strict code reviewer. In 6-10 bullet points, list potential errors, risky patterns, and suggestions to improve the code${language ? ` (${language})` : ''}. Keep it concise, concrete, and actionable.`;
+                  const modelForAnalysis = issue ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+                  const analysis = await ai.models.generateContent({ model: modelForAnalysis, contents: [ { role: 'user', parts: [ { text: instruction }, { text: content.slice(0, 16000) } ] } ] });
+                  toolResponse = { status: 'success', summary: analysis.text ?? '', focused_on_issue: issue || undefined, model: modelForAnalysis };
                   break;
                 }
                 case 'search': {
@@ -736,6 +806,8 @@ serve(async (req) => {
                           },
                         },
                         analyzeDocumentTool,
+                        lintCheckTool,
+                        analyzeCodeTool,
                       ],
                     }],
                     systemInstruction,
@@ -862,6 +934,69 @@ serve(async (req) => {
                           } catch (err: any) {
                             toolResponse = { status: 'error', message: err?.message ?? String(err) };
                           }
+                          break;
+                        }
+                        case 'lint_check': {
+                          let content = '';
+                          const maxIssues = Math.max(1, Math.min(200, Number(args.max_issues ?? 50)));
+                          if (typeof args.content === 'string' && args.content.length > 0) {
+                            content = String(args.content);
+                          } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                            const r = await supabase
+                              .from('project_files')
+                              .select('content')
+                              .eq('project_id', projectId)
+                              .eq('path', String(args.path).trim())
+                              .single();
+                            if ((r as any)?.error) throw (r as any).error;
+                            content = String((r as any)?.data?.content ?? '');
+                          } else { toolResponse = { status: 'error', message: 'Provide either path or content' }; break; }
+                          const issues: Array<{ kind: string; message: string; index?: number }> = [];
+                          const pairs: Array<[string, string, string]> = [['paren','(',')'], ['brace','{','}'], ['bracket','[',']']];
+                          for (const [kind, open, close] of pairs) {
+                            let bal = 0;
+                            for (let i = 0; i < content.length; i++) {
+                              const ch = content[i];
+                              if (ch === open) bal++;
+                              else if (ch === close) bal--;
+                              if (bal < 0) { issues.push({ kind, message: `Unexpected '${close}' at ${i}`, index: i }); break; }
+                              if (issues.length >= maxIssues) break;
+                            }
+                            if (bal > 0 && issues.length < maxIssues) issues.push({ kind, message: `Unclosed '${open}' (${bal} more)` });
+                            if (issues.length >= maxIssues) break;
+                          }
+                          const quotes: Array<[string, string]> = [["\"",'double'],["'",'single'],['`','backtick']];
+                          for (const [q, label] of quotes) {
+                            const count = (content.match(new RegExp(q, 'g')) || []).length;
+                            if (count % 2 !== 0 && issues.length < maxIssues) issues.push({ kind: 'quote', message: `Unbalanced ${label} quotes` });
+                          }
+                          toolResponse = { status: 'success', issues, issue_count: issues.length };
+                          break;
+                        }
+                        case 'analyze_code': {
+                          let content = '';
+                          if (typeof args.content === 'string' && args.content.length > 0) {
+                            content = String(args.content);
+                          } else if (typeof args.path === 'string' && args.path.trim().length > 0) {
+                            const r = await supabase
+                              .from('project_files')
+                              .select('content')
+                              .eq('project_id', projectId)
+                              .eq('path', String(args.path).trim())
+                              .single();
+                            if ((r as any)?.error) throw (r as any).error;
+                            content = String((r as any)?.data?.content ?? '');
+                          } else { toolResponse = { status: 'error', message: 'Provide either path or content' }; break; }
+                          const max = typeof args.max_bytes === 'number' ? Math.max(0, Math.trunc(args.max_bytes)) : 0;
+                          if (max > 0 && content.length > max) content = content.slice(0, max);
+                          const language = typeof args.language === 'string' ? String(args.language) : '';
+                          const issue = typeof args.issuesToDiagnose === 'string' ? String(args.issuesToDiagnose).trim() : '';
+                          const instruction = issue
+                            ? `You are a senior software engineer. Diagnose and propose fixes for the following issue in the provided code${language ? ` (${language})` : ''}: "${issue}". Provide 5-10 bullet points: likely causes, concrete fixes with references to lines/sections, and quick sanity checks/tests to validate. Keep it concise and actionable.`
+                            : `You are a strict code reviewer. In 6-10 bullet points, list potential errors, risky patterns, and suggestions to improve the code${language ? ` (${language})` : ''}. Keep it concise, concrete, and actionable.`;
+                          const modelForAnalysis = issue ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
+                          const analysis = await ai.models.generateContent({ model: modelForAnalysis, contents: [ { role: 'user', parts: [ { text: instruction }, { text: content.slice(0, 16000) } ] } ] });
+                          toolResponse = { status: 'success', summary: analysis.text ?? '', focused_on_issue: issue || undefined, model: modelForAnalysis };
                           break;
                         }
                         case 'read_file': {

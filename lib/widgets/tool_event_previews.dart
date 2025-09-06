@@ -117,12 +117,36 @@ class _ToolEventPreviewsState extends State<ToolEventPreviews>
     final name = e['name'] as String? ?? '';
     final result = e['result'];
     switch (name) {
+      case 'lint_check':
+        return _LintCheckPreview(result: result);
+      case 'analyze_code':
+        return _AnalyzeCodePreview(result: result);
+      case 'canvas_list_versions':
+        return _CanvasListVersionsPreview(
+          result: result,
+          openCanvas: widget.openCanvas,
+        );
+      case 'canvas_read_version':
+        return _CanvasReadVersionPreview(
+          result: result,
+        );
+      case 'canvas_restore_version':
+        return _CanvasRestoreVersionPreview(
+          result: result,
+          openCanvas: widget.openCanvas,
+        );
       case 'analyze_document':
         return _AnalyzeDocumentPreview(result: result);
       case 'implement_feature_and_update_todo':
         return _CompositeImplementFeaturePreview(
           result: result,
           openCanvas: widget.openCanvas,
+        );
+      case 'create_file_from_template':
+        return _TemplateCreatePreview(
+          result: result,
+          openCanvas: widget.openCanvas,
+          fetchCanvasPreview: widget.fetchCanvasPreview,
         );
       case 'canvas_create_file':
         return _CanvasCreatePreview(
@@ -136,6 +160,13 @@ class _ToolEventPreviewsState extends State<ToolEventPreviews>
           fetchCanvasPreview: widget.fetchCanvasPreview,
           openCanvas: widget.openCanvas,
         );
+      case 'canvas_delete_file':
+        return _CanvasDeletePreview(result: result);
+      case 'canvas_search':
+        return _CanvasSearchPreview(result: result);
+      case 'generate_image':
+      case 'enhance_image':
+        return _ImageToolPreview(result: result);
       case 'project_card_preview':
         return _ProjectCardPreview(result: result);
       case 'todo_list_create':
@@ -174,6 +205,305 @@ class _ToolEventPreviewsState extends State<ToolEventPreviews>
       default:
         return _GenericToolPreview(name: name, result: result);
     }
+  }
+}
+
+class _AnalyzeCodePreview extends StatelessWidget {
+  final dynamic result;
+  const _AnalyzeCodePreview({required this.result});
+
+  bool get _processing {
+    final r = result;
+    if (r == null) return true;
+    if (r is Map) {
+      final status = (r['status']?.toString().toLowerCase() ?? '');
+      return status.isEmpty ||
+          status == 'processing' ||
+          status == 'in_progress' ||
+          status == 'pending' ||
+          status == 'unknown';
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_processing) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6.0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withOpacity(0.12)),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 16, height: 16, child: MiniWave(size: 16)),
+            const SizedBox(width: 8),
+            Text('Analyzing code…', style: GoogleFonts.poppins(color: Colors.white70)),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded, color: Color(0xFF2CB67D), size: 18),
+          const SizedBox(width: 8),
+          Text('Code analyzed', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+class _LintCheckPreview extends StatefulWidget {
+  final dynamic result;
+  const _LintCheckPreview({required this.result});
+
+  @override
+  State<_LintCheckPreview> createState() => _LintCheckPreviewState();
+}
+
+class _LintCheckPreviewState extends State<_LintCheckPreview> {
+  bool _expanded = false;
+
+  bool get _processing {
+    final r = widget.result;
+    if (r == null) return true;
+    if (r is Map) {
+      final status = (r['status']?.toString().toLowerCase() ?? '');
+      final hasIssues = r['issues'] is List && (r['issues'] as List).isNotEmpty;
+      final hasCount = r['issue_count'] is num;
+      final processing = status.isEmpty || status == 'processing' || status == 'in_progress' || status == 'pending' || status == 'unknown';
+      return processing && !hasIssues && !hasCount;
+    }
+    return false;
+  }
+
+  int _issueCount(Map<String, dynamic> map) {
+    final c = map['issue_count'];
+    if (c is num) return c.toInt();
+    final issues = map['issues'];
+    if (issues is List) return issues.length;
+    return 0;
+  }
+
+  List<Map<String, dynamic>> _issues(Map<String, dynamic> map) {
+    final raw = map['issues'];
+    if (raw is List) {
+      return raw.map<Map<String, dynamic>>((e) {
+        if (e is Map) {
+          return e.map((k, v) => MapEntry(k.toString(), v));
+        }
+        return <String, dynamic>{'message': e.toString()};
+      }).toList();
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_processing) {
+      return Container(
+        margin: const EdgeInsets.symmetric(vertical: 6.0),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.white.withOpacity(0.12)),
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 16, height: 16, child: MiniWave(size: 16)),
+            const SizedBox(width: 8),
+            Text('Checking code…', style: GoogleFonts.poppins(color: Colors.white70)),
+          ],
+        ),
+      );
+    }
+
+    final map = (widget.result is Map)
+        ? (widget.result as Map).map((k, v) => MapEntry(k.toString(), v))
+        : <String, dynamic>{};
+    final count = _issueCount(map);
+    final issues = _issues(map);
+    final hasIssues = count > 0;
+    final icon = hasIssues
+        ? const Icon(Icons.close_rounded, color: Color(0xFFE5484D), size: 18)
+        : const Icon(Icons.check_circle_rounded, color: Color(0xFF2CB67D), size: 18);
+    final title = hasIssues
+        ? 'Code lints: $count issues found'
+        : 'No lints found';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: hasIssues ? () => setState(() => _expanded = !_expanded) : null,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  icon,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (hasIssues)
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      color: Colors.white70,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded && hasIssues)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _LintIssuesList(issues: issues),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LintIssuesList extends StatelessWidget {
+  final List<Map<String, dynamic>> issues;
+  const _LintIssuesList({required this.issues});
+
+  Color _sevColor(String sev) {
+    switch (sev.toLowerCase()) {
+      case 'error':
+      case 'high':
+      case 'blocker':
+        return const Color(0xFFE5484D);
+      case 'warning':
+      case 'medium':
+        return const Color(0xFFF5D90A);
+      case 'info':
+      case 'low':
+      default:
+        return const Color(0xFF2CB67D);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = issues.take(50).toList();
+    final remaining = issues.length - visible.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final i in visible)
+          _LintIssueTile(issue: i, color: _sevColor((i['severity'] ?? i['level'] ?? 'warning').toString())),
+        if (remaining > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '+$remaining more…',
+              style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _LintIssueTile extends StatelessWidget {
+  final Map<String, dynamic> issue;
+  final Color color;
+  const _LintIssueTile({required this.issue, required this.color});
+
+  String _fileLine(Map<String, dynamic> i) {
+    final path = (i['path'] ?? i['file'] ?? i['source'] ?? '').toString();
+    final line = (i['line'] ?? i['row'] ?? i['lineNumber'] ?? '').toString();
+    if (path.isEmpty && line.isEmpty) return '';
+    return [
+      if (path.isNotEmpty) path,
+      if (line.isNotEmpty) 'L$line',
+    ].join(':');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final msg = (issue['message'] ?? issue['reason'] ?? issue['description'] ?? issue['msg'] ?? '')
+        .toString()
+        .trim();
+    final sev = (issue['severity'] ?? issue['level'] ?? '').toString();
+    final fileLine = _fileLine(issue);
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  msg.isNotEmpty ? msg : '(no message)',
+                  style: GoogleFonts.poppins(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (fileLine.isNotEmpty)
+                Expanded(
+                  child: Text(
+                    fileLine,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.robotoMono(color: Colors.white54, fontSize: 12),
+                  ),
+                ),
+              if (sev.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  sev.toUpperCase(),
+                  style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -241,7 +571,32 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
   Widget build(BuildContext context) {
     final map = (widget.result is Map<String, dynamic>) ? widget.result as Map<String, dynamic> : {};
     final path = map['path'] as String?;
+    // Prefer description metadata if available
+    final description = (map['description'] as String?)?.trim();
     final fileName = path != null ? _friendlyBaseName(path) : 'Canvas File';
+    final headerTitle = (description != null && description.isNotEmpty) ? description : fileName;
+    // Determine extension-based type label for footer
+    String? footerType;
+    if (path != null) {
+      final lower = path.toLowerCase();
+      if (lower.endsWith('.md') || lower.endsWith('.markdown')) footerType = 'Markdown file';
+      else if (lower.endsWith('.txt')) footerType = 'Text file';
+      else if (lower.endsWith('.html') || lower.endsWith('.htm')) footerType = 'HTML file';
+      else if (lower.endsWith('.css')) footerType = 'CSS file';
+      else if (lower.endsWith('.js')) footerType = 'JavaScript file';
+      else if (lower.endsWith('.ts')) footerType = 'TypeScript file';
+      else if (lower.endsWith('.json')) footerType = 'JSON file';
+      else if (lower.endsWith('.dart')) footerType = 'Dart file';
+      else if (lower.endsWith('.py')) footerType = 'Python file';
+      else if (lower.endsWith('.java')) footerType = 'Java file';
+      else if (lower.endsWith('.c')) footerType = 'C file';
+      else if (lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.cxx')) footerType = 'C++ file';
+      else if (lower.endsWith('.rs')) footerType = 'Rust file';
+      else if (lower.endsWith('.go')) footerType = 'Go file';
+      else if (lower.endsWith('.kt') || lower.endsWith('.kts')) footerType = 'Kotlin file';
+      else if (lower.endsWith('.swift')) footerType = 'Swift file';
+      else footerType = null;
+    }
     
     return Container(
       decoration: BoxDecoration(
@@ -293,7 +648,7 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          fileName,
+                          headerTitle,
                           style: GoogleFonts.poppins(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -390,9 +745,24 @@ class _CanvasCreatePreviewState extends State<_CanvasCreatePreview> {
           
           const SizedBox(height: 12),
           
-          // Action buttons
+          // Footer label (extension-based type) + action buttons
           Row(
             children: [
+              if (footerType != null) ...[
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: Colors.white.withOpacity(0.08)),
+                  ),
+                  child: Text(
+                    footerType,
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               if (path != null && path.isNotEmpty)
                 Expanded(
                   child: _PrimaryButton(
@@ -1114,7 +1484,9 @@ class _AnalyzeDocumentPreview extends StatelessWidget {
   const _AnalyzeDocumentPreview({required this.result});
   @override
   Widget build(BuildContext context) {
-    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+  final Map<String, dynamic> map = (result is Map<String, dynamic>)
+    ? result as Map<String, dynamic>
+    : <String, dynamic>{};
     final rawStatus = (map['status'] as String?) ?? 'unknown';
     final status = rawStatus.toLowerCase();
     final mime = (map['mime_type'] as String?) ?? (map['mime'] as String?) ?? '';
@@ -1425,6 +1797,482 @@ class _GhostButton extends StatelessWidget {
       style: TextButton.styleFrom(
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      ),
+    );
+  }
+}
+
+// ===== New Previews for Versioning and Additional Tools =====
+
+class _CanvasListVersionsPreview extends StatelessWidget {
+  final dynamic result;
+  final void Function(String path) openCanvas;
+  const _CanvasListVersionsPreview({required this.result, required this.openCanvas});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final status = (map['status'] as String?) ?? 'unknown';
+    final path = (map['path'] as String?) ?? '';
+    final versions = (map['versions'] as List?)?.cast<Map>() ?? const [];
+    final fileName = path.isNotEmpty ? _friendlyBaseName(path) : 'Canvas';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF111520), Color(0xFF0E1220)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.history, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Versions • $fileName',
+                  style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (path.isNotEmpty)
+                _GhostButton(
+                  icon: Icons.open_in_new,
+                  label: 'Open',
+                  onPressed: () => openCanvas(path),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (status == 'error')
+            _ErrorCallout(message: (map['message'] as String?) ?? 'Failed to list versions')
+          else if (versions.isEmpty)
+            Text('No versions found', style: GoogleFonts.poppins(color: Colors.white70))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: versions.map((v) {
+                final ver = v['version_number']?.toString() ?? '?';
+                final desc = (v['description'] as String?) ?? '';
+                final createdAt = (v['created_at'] as String?) ?? '';
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF7F5AF0).withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text('v$ver', style: GoogleFonts.robotoMono(color: const Color(0xFFB9A6FF), fontSize: 12)),
+                          ),
+                          const SizedBox(width: 8),
+                          if (createdAt.isNotEmpty)
+                            Text(createdAt, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+                        ],
+                      ),
+                      if (desc.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        SizedBox(
+                          width: 220,
+                          child: Text(desc, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CanvasReadVersionPreview extends StatelessWidget {
+  final dynamic result;
+  const _CanvasReadVersionPreview({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final status = (map['status'] as String?) ?? 'unknown';
+    if (status == 'error') {
+      return _ErrorCallout(message: (map['message'] as String?) ?? 'Failed to read version');
+    }
+    final path = (map['path'] as String?) ?? '';
+    final ver = map['version_number']?.toString() ?? '?';
+    final desc = (map['description'] as String?) ?? '';
+    final createdAt = (map['created_at'] as String?) ?? '';
+    final content = (map['content'] as String?) ?? '';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF121726), Color(0xFF0E1320)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.article_outlined, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Version v$ver • ${_friendlyBaseName(path)}',
+                  style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (createdAt.isNotEmpty)
+                Text(createdAt, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+            ],
+          ),
+          if (desc.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(desc, style: GoogleFonts.poppins(color: Colors.white70)),
+          ],
+          const SizedBox(height: 10),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.08)),
+            ),
+            constraints: const BoxConstraints(maxHeight: 220),
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: SelectableText(
+                content.isEmpty ? '// no content' : content,
+                style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12, height: 1.4),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CanvasRestoreVersionPreview extends StatelessWidget {
+  final dynamic result;
+  final void Function(String path) openCanvas;
+  const _CanvasRestoreVersionPreview({required this.result, required this.openCanvas});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final status = (map['status'] as String?) ?? 'unknown';
+    final path = (map['path'] as String?) ?? '';
+    final ver = map['version_number']?.toString() ?? '?';
+    final newVer = map['new_version_number']?.toString();
+    final message = (map['message'] as String?) ?? '';
+
+    final ok = status == 'success';
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF10202A), Color(0xFF0D1622)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(ok ? Icons.restore : Icons.restore_outlined, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  ok ? 'Restored v$ver → current' : 'Restore version',
+                  style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (path.isNotEmpty)
+                _GhostButton(icon: Icons.open_in_new, label: 'Open', onPressed: () => openCanvas(path)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (ok)
+            Text(
+              newVer != null ? 'New head is v$newVer (restored from v$ver)' : 'Canvas restored to v$ver',
+              style: GoogleFonts.poppins(color: Colors.white70),
+            )
+          else if (message.isNotEmpty)
+            _ErrorCallout(message: message)
+          else
+            Text('Unknown restore result', style: GoogleFonts.poppins(color: Colors.white70)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TemplateCreatePreview extends StatefulWidget {
+  final dynamic result;
+  final void Function(String path) openCanvas;
+  final Future<String?> Function(String path) fetchCanvasPreview;
+  const _TemplateCreatePreview({required this.result, required this.openCanvas, required this.fetchCanvasPreview});
+
+  @override
+  State<_TemplateCreatePreview> createState() => _TemplateCreatePreviewState();
+}
+
+class _TemplateCreatePreviewState extends State<_TemplateCreatePreview> {
+  String? _preview;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+  final Map<String, dynamic> map = (widget.result is Map<String, dynamic>)
+    ? widget.result as Map<String, dynamic>
+    : <String, dynamic>{};
+    final path = (map['path'] as String?) ?? '';
+    if (path.isNotEmpty) {
+      _loading = true;
+      widget.fetchCanvasPreview(path).then((c) {
+        if (!mounted) return;
+        setState(() { _preview = c; _loading = false; });
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  final Map<String, dynamic> map = (widget.result is Map<String, dynamic>)
+    ? widget.result as Map<String, dynamic>
+    : <String, dynamic>{};
+    final status = (map['status'] as String?) ?? 'unknown';
+    final path = (map['path'] as String?) ?? '';
+    final desc = (map['description'] as String?) ?? '';
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0F1420), Color(0xFF0C1018)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Created from template • ${path.isEmpty ? 'Canvas' : _friendlyBaseName(path)}',
+                  style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (path.isNotEmpty)
+                _GhostButton(icon: Icons.open_in_new, label: 'Open', onPressed: () => widget.openCanvas(path)),
+            ],
+          ),
+          if (status == 'error') ...[
+            const SizedBox(height: 8),
+            _ErrorCallout(message: (map['message'] as String?) ?? 'Failed to create from template'),
+          ] else ...[
+            if (desc.trim().isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(desc, style: GoogleFonts.poppins(color: Colors.white70)),
+            ],
+            const SizedBox(height: 8),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white.withOpacity(0.08)),
+              ),
+              constraints: const BoxConstraints(maxHeight: 200),
+              padding: const EdgeInsets.all(12),
+              child: _loading
+                  ? Row(children: [const MiniWave(size: 14), const SizedBox(width: 10), Text('Loading preview…', style: GoogleFonts.poppins(color: Colors.white54))])
+                  : SingleChildScrollView(
+                      child: SelectableText(
+                        (_preview ?? '').isEmpty ? '// preview unavailable' : _preview!,
+                        style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12),
+                      ),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CanvasDeletePreview extends StatelessWidget {
+  final dynamic result;
+  const _CanvasDeletePreview({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final status = (map['status'] as String?) ?? 'unknown';
+    final path = (map['path'] as String?) ?? '';
+    final message = (map['message'] as String?) ?? '';
+
+    final ok = status == 'success';
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Icon(ok ? Icons.delete_outline : Icons.error_outline, color: Colors.white70, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              ok ? 'Deleted ${path.isEmpty ? 'canvas file' : _friendlyBaseName(path)}' : (message.isEmpty ? 'Delete failed' : message),
+              style: GoogleFonts.poppins(color: Colors.white70),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CanvasSearchPreview extends StatelessWidget {
+  final dynamic result;
+  const _CanvasSearchPreview({required this.result});
+
+  @override
+  Widget build(BuildContext context) {
+    final map = (result is Map<String, dynamic>) ? result as Map<String, dynamic> : {};
+    final status = (map['status'] as String?) ?? 'unknown';
+    final items = (map['results'] as List?) ?? (map['items'] as List?) ?? const [];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [const Icon(Icons.search, color: Colors.white70, size: 16), const SizedBox(width: 8), Text('Canvas search', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600))]),
+          const SizedBox(height: 8),
+          if (status == 'error')
+            _ErrorCallout(message: (map['message'] as String?) ?? 'Search failed')
+          else if (items.isEmpty)
+            Text('No matches', style: GoogleFonts.poppins(color: Colors.white70))
+          else
+            ...items.take(5).map((it) {
+              final Map<String, dynamic> m = (it is Map)
+                  ? it.map((k, v) => MapEntry(k.toString(), v))
+                  : <String, dynamic>{};
+              final p = (m['path'] as String?) ?? '';
+              final snip = (m['snippet'] as String?) ?? (m['excerpt'] as String?) ?? '';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description_outlined, size: 14, color: Colors.white60),
+                    const SizedBox(width: 6),
+                    Expanded(child: Text(p, style: GoogleFonts.robotoMono(color: Colors.white70, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    if (snip.trim().isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Flexible(child: Text(snip, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    ],
+                  ],
+                ),
+              );
+            }),
+        ],
+      ),
+    );
+  }
+}
+
+class _ImageToolPreview extends StatelessWidget {
+  final dynamic result;
+  const _ImageToolPreview({required this.result});
+
+  String? _pickUrl(Map<String, dynamic> map) {
+    return (map['url'] as String?) ?? (map['signedUrl'] as String?) ?? (map['publicUrl'] as String?) ?? (map['image_url'] as String?);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+  final Map<String, dynamic> map = (result is Map)
+    ? (result as Map).map((k, v) => MapEntry(k.toString(), v))
+    : <String, dynamic>{};
+  final status = (map['status'] as String?) ?? 'unknown';
+  final img = _pickUrl(map);
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF141725), Color(0xFF0E1020)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.10)),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [const Icon(Icons.image_outlined, color: Colors.white70, size: 16), const SizedBox(width: 8), Text('Image', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600))]),
+          const SizedBox(height: 8),
+          if (status == 'error')
+            _ErrorCallout(message: (map['message'] as String?) ?? 'Image tool failed')
+          else if (img != null && img.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(img, height: 160, fit: BoxFit.cover),
+            )
+          else
+            Text('Image ready (no preview url)', style: GoogleFonts.poppins(color: Colors.white70)),
+        ],
       ),
     );
   }

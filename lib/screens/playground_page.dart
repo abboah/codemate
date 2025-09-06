@@ -17,6 +17,16 @@ import 'package:codemate/widgets/playground_code_block.dart';
 import 'package:codemate/widgets/scroll_to_bottom_button.dart';
 import 'package:codemate/widgets/tool_event_previews.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+// Conditional import: on web use HtmlElementView-based preview, otherwise stub
+import 'package:codemate/widgets/canvas_html_preview_stub.dart'
+  if (dart.library.html) 'package:codemate/widgets/canvas_html_preview_web.dart';
+import 'package:codemate/utils/download_helper.dart' as download_helper;
+import 'package:flutter_highlight/flutter_highlight.dart';
+import 'package:codemate/components/ide/diff_preview.dart';
+import 'package:codemate/components/ide/diff_side_by_side.dart';
 
 class PlaygroundPage extends ConsumerStatefulWidget {
   const PlaygroundPage({super.key});
@@ -36,6 +46,16 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   // Scroll controller for conversation and scroll-to-bottom button
   final ScrollController _conversationScrollController = ScrollController();
   bool _showScrollToBottom = false;
+  // Throttle state updates from scroll listener
+  int _lastScrollCheckMs = 0;
+  // Canvas view mode: 'code' or 'preview'
+  final ValueNotifier<String> _canvasViewMode = ValueNotifier<String>('code');
+  String? _lastCanvasPath; // to reset view mode when switching files
+  // Split ratio between conversation (left) and canvas (right). 0.6 = 60% left.
+  double _splitRatio = 0.5;
+  static const double _minPaneRatio = 0.2; // 20%
+  static const double _maxPaneRatio = 0.8; // 80%
+  bool _canvasFullscreen = false;
 
   @override
   void initState() {
@@ -47,6 +67,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     
     // Add scroll listener for scroll-to-bottom button
     _conversationScrollController.addListener(_onScroll);
+
+    // Compute initial state after first layout
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onScroll(force: true);
+    });
   }
 
   @override
@@ -61,17 +86,23 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     super.dispose();
   }
 
-  void _onScroll() {
-    final isAtBottom = _conversationScrollController.offset >= 
-        _conversationScrollController.position.maxScrollExtent - 100;
-    
-    // Show button when not at bottom and has some content to scroll
-    final shouldShow = !isAtBottom && _conversationScrollController.position.maxScrollExtent > 200;
-    
+  void _onScroll({bool force = false}) {
+    if (!_conversationScrollController.hasClients) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force && now - _lastScrollCheckMs < 80) return; // ~12.5 fps throttle
+    _lastScrollCheckMs = now;
+
+    final metrics = _conversationScrollController.position;
+    // Consider "at bottom" when there's very little content below the viewport
+    final extentAfter = metrics.extentAfter; // distance from bottom of viewport to bottom of content
+    final shouldShow = extentAfter > 48 && metrics.maxScrollExtent > 100;
+
     if (shouldShow != _showScrollToBottom) {
-      setState(() {
-        _showScrollToBottom = shouldShow;
-      });
+      if (mounted) {
+        setState(() {
+          _showScrollToBottom = shouldShow;
+        });
+      }
     }
   }
 
@@ -81,6 +112,73 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  Future<void> _showFileSwitcherMenu(BuildContext context, WidgetRef ref) async {
+    final state = ref.read(playgroundProvider);
+    final files = state.canvasFiles;
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No canvas files yet')));
+      return;
+    }
+    final current = state.selectedCanvasPath;
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: const Color(0xFF0F1420),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Row(
+                  children: [
+                    Text('Canvas files', style: GoogleFonts.poppins(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close, color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  addAutomaticKeepAlives: false,
+                  addRepaintBoundaries: true,
+                  cacheExtent: 600.0,
+                  itemCount: files.length,
+                  itemBuilder: (c, i) {
+                    final f = files[i];
+                    final path = f['path'] as String? ?? '';
+                    final desc = (f['description'] as String?)?.trim();
+                    final label = (desc != null && desc.isNotEmpty) ? desc : _formatCanvasTitle(path);
+                    final isCurrent = current == path;
+                    return RepaintBoundary(
+                      child: ListTile(
+                        dense: true,
+                        leading: Icon(Icons.insert_drive_file, color: isCurrent ? const Color(0xFF7F5AF0) : Colors.white70),
+                        title: Text(label, style: GoogleFonts.poppins(color: Colors.white)),
+                        subtitle: Text(path, style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12)),
+                        trailing: isCurrent ? const Icon(Icons.check, color: Color(0xFF7F5AF0)) : null,
+                        onTap: () => Navigator.pop(ctx, path),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected != null && selected.isNotEmpty && selected != current) {
+      await ref.read(playgroundProvider).openCanvasFile(selected);
+    }
   }
 
   static const Set<String> _allowedExts = {
@@ -633,6 +731,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playgroundProvider);
+    // Reset view mode when the selected canvas file changes
+    if (state.selectedCanvasPath != _lastCanvasPath) {
+      _lastCanvasPath = state.selectedCanvasPath;
+      _canvasViewMode.value = 'code';
+    }
     final hasMessages = state.messages.isNotEmpty;
     final titleText =
         state.chatTitle?.isNotEmpty == true ? state.chatTitle! : 'Playground';
@@ -821,141 +924,335 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                   child: LayoutBuilder(
                   builder: (context, constraints) {
                     final showCanvas = ref.watch(playgroundProvider).selectedCanvasPath != null;
-                    return Row(
-                      children: [
-                        Expanded(
-                          flex: showCanvas ? 4 : 2,
-                          child: Stack(
-                            children: [
-                              _buildGlow(),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 280),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                child: !hasMessages ? _buildLanding(context) : _buildConversation(context),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (showCanvas)
-                          TweenAnimationBuilder<double>(
-                            duration: const Duration(milliseconds: 400),
-                            curve: Curves.easeOutCubic,
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            builder: (context, t, child) => Transform.translate(
-                              offset: Offset((1 - t) * 100, 0),
-                              child: Opacity(
-                                opacity: t,
-                                child: child,
-                              ),
+                    if (!showCanvas) {
+                      return Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: Stack(
+                              children: [
+                                _buildGlow(),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 280),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  child: !hasMessages ? _buildLanding(context) : _buildConversation(context),
+                                ),
+                              ],
                             ),
-                            child: Container(
-                              width: constraints.maxWidth * 0.35,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFF1A1D29),
-                                    Color(0xFF151824), 
-                                    Color(0xFF111320)
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                border: Border(
-                                  left: BorderSide(color: Colors.white.withOpacity(0.12)),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.3),
-                                    blurRadius: 8,
-                                    offset: const Offset(-2, 0),
+                          ),
+                        ],
+                      );
+                    }
+
+                    // With canvas open: sized panes with draggable separator
+                    const grabberW = 8.0;
+                    final totalW = constraints.maxWidth;
+                    final contentW = (totalW - grabberW).clamp(0.0, totalW);
+                    final leftW = (contentW * _splitRatio).clamp(contentW * _minPaneRatio, contentW * _maxPaneRatio);
+                    final rightW = contentW - leftW;
+                    return Stack(
+                      children: [
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: leftW,
+                              child: Stack(
+                                children: [
+                                  _buildGlow(),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 280),
+                                    switchInCurve: Curves.easeOutCubic,
+                                    switchOutCurve: Curves.easeInCubic,
+                                    child: !hasMessages ? _buildLanding(context) : _buildConversation(context),
                                   ),
                                 ],
                               ),
+                            ),
+                            // Grabber
+                            MouseRegion(
+                              cursor: SystemMouseCursors.resizeColumn,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onHorizontalDragUpdate: (details) {
+                                  final newLeft = (leftW + details.delta.dx).clamp(contentW * _minPaneRatio, contentW * _maxPaneRatio);
+                                  setState(() {
+                                    _splitRatio = (contentW <= 0) ? 0.5 : (newLeft / contentW);
+                                  });
+                                },
+                                child: Container(
+                                  width: grabberW,
+                                  height: double.infinity,
+                                  color: Colors.white.withOpacity(0.02),
+                                  child: Center(
+                                    child: Container(
+                                      width: 2,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Canvas pane
+                            TweenAnimationBuilder<double>(
+                              duration: const Duration(milliseconds: 400),
+                              curve: Curves.easeOutCubic,
+                              tween: Tween(begin: 0.0, end: 1.0),
+                              builder: (context, t, child) => Transform.translate(
+                                offset: Offset((1 - t) * 100, 0),
+                                child: Opacity(opacity: t, child: child),
+                              ),
+                              child: SizedBox(
+                                width: rightW,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF1A1D29),
+                                        Color(0xFF151824),
+                                        Color(0xFF111320)
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    ),
+                                    border: Border(
+                                      left: BorderSide(color: Colors.white.withOpacity(0.12)),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(-2, 0),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      // Header
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.03),
+                                          border: Border(
+                                            bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
+                                          ),
+                                        ),
+                                        child: LayoutBuilder(
+                                          builder: (context, head) {
+                                            final compact = head.maxWidth < 480;
+                                            final ultra = head.maxWidth < 360;
+                                            final state = ref.watch(playgroundProvider);
+                                            final currentPath = state.selectedCanvasPath ?? '';
+                                            final desc = (state.selectedCanvasMeta?['description'] as String?)?.trim();
+                                            final currentLabel = (desc != null && desc.isNotEmpty) ? desc : (currentPath.split('/').isNotEmpty ? currentPath.split('/').last : currentPath);
+                                            return Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(6),
+                                                  decoration: BoxDecoration(
+                                                    gradient: const LinearGradient(
+                                                      colors: [Color(0xFF7F5AF0), Color(0xFF9D4EDD)],
+                                                    ),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF7F5AF0).withOpacity(0.3),
+                                                        blurRadius: 4,
+                                                        offset: const Offset(0, 1),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: const Icon(Icons.code, color: Colors.white, size: 16),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                if (!compact)
+                                                  Expanded(
+                                                    child: InkWell(
+                                                      borderRadius: BorderRadius.circular(6),
+                                                      onTap: () async {
+                                                        await _showFileSwitcherMenu(context, ref);
+                                                      },
+                                                      child: Padding(
+                                                        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                                        child: Row(
+                                                          children: [
+                                                            Expanded(
+                                                              child: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  Text('Canvas', style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.6), fontSize: 10, fontWeight: FontWeight.w500)),
+                                                                  Text(currentLabel, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 4),
+                                                            const Icon(Icons.arrow_drop_down, color: Colors.white70, size: 16),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  )
+                                                else
+                                                  // Compact: show only a small file switcher icon button
+                                                  IconButton(
+                                                    tooltip: 'Switch canvas file',
+                                                    onPressed: () async { await _showFileSwitcherMenu(context, ref); },
+                                                    icon: const Icon(Icons.folder_open, color: Colors.white70, size: 18),
+                                                    iconSize: 18,
+                                                    padding: const EdgeInsets.all(6),
+                                                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                    style: IconButton.styleFrom(
+                                                      backgroundColor: Colors.white.withOpacity(0.05),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                    ),
+                                                  ),
+                                                if (!ultra) ...[
+                                                  const SizedBox(width: 6),
+                                                  _CanvasHeaderToggle(
+                                                    mode: _canvasViewMode,
+                                                    meta: state.selectedCanvasMeta,
+                                                  ),
+                                                ],
+                                                const SizedBox(width: 6),
+                                                _VersionDropdown(ref: ref),
+                                                const SizedBox(width: 4),
+                                                IconButton(
+                                                  tooltip: _canvasFullscreen ? 'Exit Fullscreen' : 'View Fullscreen',
+                                                  onPressed: () => setState(() { _canvasFullscreen = !_canvasFullscreen; }),
+                                                  icon: Icon(_canvasFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white70, size: 18),
+                                                  iconSize: 18,
+                                                  padding: const EdgeInsets.all(6),
+                                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                  style: IconButton.styleFrom(
+                                                    backgroundColor: Colors.white.withOpacity(0.05),
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                _CanvasMoreMenu(ref: ref),
+                                                const SizedBox(width: 4),
+                                                IconButton(
+                                                  tooltip: 'Close Canvas',
+                                                  onPressed: () => ref.read(playgroundProvider).closeCanvas(),
+                                                  icon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                                                  iconSize: 18,
+                                                  padding: const EdgeInsets.all(6),
+                                                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                                  style: IconButton.styleFrom(
+                                                    backgroundColor: Colors.white.withOpacity(0.05),
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                                  ),
+                                                ),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      // Preview banner when looking at a historical version
+                                      _PreviewVersionBanner(ref: ref),
+                                      Expanded(
+                                        child: _CanvasPreviewHost(
+                                          ref: ref,
+                                          mode: _canvasViewMode,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_canvasFullscreen)
+                          Positioned.fill(
+                            child: Container(
+                              color: const Color(0xFF0F1420),
                               child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Enhanced header with better styling
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                     decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.03),
+                                      color: Colors.white.withOpacity(0.04),
                                       border: Border(
                                         bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
                                       ),
                                     ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            gradient: const LinearGradient(
-                                              colors: [
-                                                Color(0xFF7F5AF0),
-                                                Color(0xFF9D4EDD),
-                                              ],
-                                            ),
-                                            borderRadius: BorderRadius.circular(8),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: const Color(0xFF7F5AF0).withOpacity(0.3),
-                                                blurRadius: 6,
-                                                offset: const Offset(0, 2),
+                                    child: LayoutBuilder(
+                                      builder: (context, head) {
+                                        final compact = head.maxWidth < 480;
+                                        final ultra = head.maxWidth < 360;
+                                        final state = ref.watch(playgroundProvider);
+                                        final currentPath = state.selectedCanvasPath ?? '';
+                                        final desc = (state.selectedCanvasMeta?['description'] as String?)?.trim();
+                                        final currentLabel = (desc != null && desc.isNotEmpty) ? desc : (currentPath.split('/').isNotEmpty ? currentPath.split('/').last : currentPath);
+                                        return Row(
+                                          children: [
+                                            if (!compact)
+                                              Expanded(
+                                                child: InkWell(
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  onTap: () async { await _showFileSwitcherMenu(context, ref); },
+                                                  child: Padding(
+                                                    padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          child: Text(currentLabel.isEmpty ? 'Canvas' : currentLabel, style: GoogleFonts.poppins(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14), overflow: TextOverflow.ellipsis, maxLines: 1),
+                                                        ),
+                                                        const SizedBox(width: 4),
+                                                        const Icon(Icons.arrow_drop_down, color: Colors.white70, size: 16),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            else
+                                              IconButton(
+                                                tooltip: 'Switch canvas file',
+                                                onPressed: () async { await _showFileSwitcherMenu(context, ref); },
+                                                icon: const Icon(Icons.folder_open, color: Colors.white70, size: 18),
+                                                iconSize: 18,
+                                                padding: const EdgeInsets.all(6),
+                                                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                                              ),
+                                            if (!ultra) ...[
+                                              const SizedBox(width: 6),
+                                              _CanvasHeaderToggle(
+                                                mode: _canvasViewMode,
+                                                meta: state.selectedCanvasMeta,
                                               ),
                                             ],
-                                          ),
-                                          child: const Icon(Icons.code, color: Colors.white, size: 18),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                'Canvas Preview',
-                                                style: GoogleFonts.poppins(
-                                                  color: Colors.white.withOpacity(0.7),
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                _formatCanvasTitle(ref.watch(playgroundProvider).selectedCanvasPath ?? ''),
-                                                style: GoogleFonts.poppins(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w600,
-                                                  fontSize: 14,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Close Canvas',
-                                          onPressed: () => ref.read(playgroundProvider).closeCanvas(),
-                                          icon: const Icon(Icons.close, color: Colors.white70, size: 20),
-                                          style: IconButton.styleFrom(
-                                            backgroundColor: Colors.white.withOpacity(0.05),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(8),
+                                            const SizedBox(width: 6),
+                                            _VersionDropdown(ref: ref),
+                                            const SizedBox(width: 4),
+                                            IconButton(
+                                              tooltip: 'Exit Fullscreen',
+                                              onPressed: () => setState(() { _canvasFullscreen = false; }),
+                                              icon: const Icon(Icons.fullscreen_exit, color: Colors.white70, size: 18),
+                                              iconSize: 18,
+                                              padding: const EdgeInsets.all(6),
+                                              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                                             ),
-                                          ),
-                                        ),
-                                      ],
+                                            const SizedBox(width: 4),
+                                            _CanvasMoreMenu(ref: ref),
+                                          ],
+                                        );
+                                      },
                                     ),
                                   ),
-                                  // Enhanced content area
+                                  // Preview banner when looking at a historical version (fullscreen)
+                                  _PreviewVersionBanner(ref: ref),
                                   Expanded(
-                                    child: ref.watch(playgroundProvider).loadingCanvas
-                                        ? Container(
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withOpacity(0.2),
-                                            ),
-                                            child: const Center(child: MiniWave(size: 28)),
-                                          )
-                                        : _CanvasPreview(content: ref.watch(playgroundProvider).selectedCanvasContent ?? ''),
+                                    child: _CanvasPreviewHost(
+                                      ref: ref,
+                                      mode: _canvasViewMode,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1129,13 +1426,19 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                 child: ListView.builder(
                   controller: _conversationScrollController,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  physics: const ClampingScrollPhysics(),
+                  cacheExtent: 1000.0,
+                  addAutomaticKeepAlives: false,
+                  addSemanticIndexes: false,
+                  addRepaintBoundaries: true,
                   itemCount: state.messages.length,
                   itemBuilder: (context, index) {
                 final m = state.messages[index];
                 final isUser = m.sender == 'user';
                 final isStreamingLastAI = !isUser && index == state.messages.length - 1 && state.streaming;
                 // removed unused isLastAI local variable
-                return Align(
+                return RepaintBoundary(
+                  child: Align(
                   alignment: Alignment.center,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
@@ -1356,7 +1659,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                       ),
                     ),
                   ),
-                );
+                ));
               },
             ),
           ),
@@ -1478,37 +1781,42 @@ class _PlaygroundHistoryPanel extends StatelessWidget {
                 )
         : ListView.separated(
           padding: const EdgeInsets.all(8),
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: true,
+          cacheExtent: 800.0,
                   itemBuilder: (ctx, i) {
                     final c = chats[i];
                     final title = (c['title'] as String?)?.trim().isNotEmpty == true
                         ? c['title'] as String
                         : 'Untitled Chat';
-                    return InkWell(
-                      onTap: () async {
-                        await ref.read(playgroundProvider).loadChat(c['id'] as String);
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-                        decoration: BoxDecoration(
-                          // Blend with sidebar background; remove borders
-                          color: Colors.white.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.transparent),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white60, size: 16),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.95), fontSize: 12),
+                    return RepaintBoundary(
+                      child: InkWell(
+                        onTap: () async {
+                          await ref.read(playgroundProvider).loadChat(c['id'] as String);
+                        },
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
+                          decoration: BoxDecoration(
+                            // Blend with sidebar background; remove borders
+                            color: Colors.white.withOpacity(0.04),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.transparent),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white60, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(color: Colors.white.withOpacity(0.95), fontSize: 12),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     );
@@ -1538,89 +1846,755 @@ class _PlaygroundHistoryPanel extends StatelessWidget {
   }
 }
 
-class _CanvasPreview extends StatelessWidget {
-  final String content;
-  const _CanvasPreview({required this.content});
+class _CanvasHeaderToggle extends StatelessWidget {
+  final ValueNotifier<String> mode; // 'code' | 'preview'
+  final Map<String, dynamic>? meta;
+  const _CanvasHeaderToggle({required this.mode, required this.meta});
+
+  bool get _shouldShowToggle {
+    final t = (meta?['file_type'] as String?)?.toLowerCase();
+    // Show when file type is not 'document' (i.e., code or unknown)
+    return t != 'document';
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!_shouldShowToggle) return const SizedBox.shrink();
+    return ValueListenableBuilder<String>(
+      valueListenable: mode,
+      builder: (context, value, _) {
+        final isCode = value != 'preview';
+        return Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.06),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _togglePill(
+                context,
+                icon: Icons.visibility_outlined,
+                label: 'Preview',
+                selected: !isCode,
+                onTap: () => mode.value = 'preview',
+              ),
+              _togglePill(
+                context,
+                icon: Icons.code,
+                label: 'Code',
+                selected: isCode,
+                onTap: () => mode.value = 'code',
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _togglePill(BuildContext context, {required IconData icon, required String label, required bool selected, required VoidCallback onTap}) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 140),
+        scale: selected ? 1.0 : 0.95,
+        curve: Curves.easeOut,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white.withOpacity(0.14) : Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.white70),
+              const SizedBox(width: 6),
+              Text(label, style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CanvasPreviewHost extends StatelessWidget {
+  final WidgetRef ref;
+  final ValueNotifier<String> mode;
+  const _CanvasPreviewHost({required this.ref, required this.mode});
+
+  bool get _isDocument {
+    final t = (ref.watch(playgroundProvider).selectedCanvasMeta?['file_type'] as String?)?.toLowerCase();
+    return t == 'document';
+  }
+
+  bool get _canImplementInCanvas {
+    final v = ref.watch(playgroundProvider).selectedCanvasMeta?['can_implement_in_canvas'];
+    return v == true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(playgroundProvider);
+    final content = state.selectedCanvasContent ?? '';
+    final loading = state.loadingCanvas;
     return Container(
       margin: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.4),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white.withOpacity(0.08)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with file info
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.03),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
-              ),
-              border: Border(
-                bottom: BorderSide(color: Colors.white.withOpacity(0.06)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: loading
+            ? const Center(child: MiniWave(size: 28))
+            : (_isDocument
+                ? _DocumentMarkdown(content: content)
+                : ValueListenableBuilder<String>(
+                    valueListenable: mode,
+                    builder: (context, value, _) {
+                      if (value == 'preview') {
+                        if (!_canImplementInCanvas) return const _PreviewNotSupported();
+                        return _WebPreview(content: content);
+                      }
+                      // Default to code view
+                      return _CodeView(content: content);
+                    },
+                  )),
+      ),
+    );
+  }
+}
+
+class _CanvasMoreMenu extends StatelessWidget {
+  final WidgetRef ref;
+  const _CanvasMoreMenu({required this.ref});
+
+  String _guessMime(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
+    if (lower.endsWith('.css')) return 'text/css';
+    if (lower.endsWith('.js')) return 'text/javascript';
+    if (lower.endsWith('.json')) return 'application/json';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+    if (lower.endsWith('.txt')) return 'text/plain';
+    if (lower.endsWith('.xml')) return 'application/xml';
+    if (lower.endsWith('.dart')) return 'text/plain';
+    return 'text/plain';
+  }
+
+  Future<void> _downloadCurrent(BuildContext context) async {
+    final state = ref.read(playgroundProvider);
+    final path = state.selectedCanvasPath ?? 'file.txt';
+    final content = state.selectedCanvasContent ?? '';
+    final parts = path.split('/');
+    final filename = parts.isNotEmpty ? parts.last : 'file.txt';
+    final mime = _guessMime(filename);
+    final ok = await download_helper.DownloadHelper.saveTextFile(
+      filename: filename,
+      mime: mime,
+      content: content,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Downloaded $filename' : 'Failed to download $filename',
+          style: GoogleFonts.poppins(),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      color: const Color(0xFF1A1D29),
+      icon: const Icon(Icons.more_horiz, color: Colors.white70, size: 18),
+      itemBuilder: (ctx) => [
+        PopupMenuItem<String>(
+          value: 'download',
+          child: Row(
+            children: [
+              const Icon(Icons.download, color: Colors.white70, size: 16),
+              const SizedBox(width: 8),
+              Text('Download file', style: GoogleFonts.poppins(color: Colors.white)),
+            ],
+          ),
+        ),
+      ],
+      onSelected: (v) async {
+        if (v == 'download') {
+          await _downloadCurrent(context);
+        }
+      },
+      position: PopupMenuPosition.under,
+    );
+  }
+}
+
+class _DocumentMarkdown extends StatelessWidget {
+  final String content;
+  const _DocumentMarkdown({required this.content});
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black.withOpacity(0.2),
+      padding: const EdgeInsets.all(16),
+      child: Markdown(
+        data: content,
+        styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+          h1: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 28),
+          h2: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 24),
+          h3: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 20),
+          h4: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 18),
+          h5: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 16),
+          h6: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700, height: 1.3, fontSize: 14),
+          p: GoogleFonts.inter(color: Colors.white, height: 1.7, fontSize: 15),
+          blockquote: GoogleFonts.inter(color: Colors.white70, height: 1.7),
+          listBullet: GoogleFonts.inter(color: Colors.white, height: 1.7),
+          em: GoogleFonts.inter(color: Colors.white, fontStyle: FontStyle.italic),
+          strong: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w700),
+          code: GoogleFonts.robotoMono(color: Colors.white),
+        ),
+      ),
+    );
+  }
+}
+
+class _CodeView extends StatefulWidget {
+  final String content;
+  const _CodeView({required this.content});
+  @override
+  State<_CodeView> createState() => _CodeViewState();
+}
+
+class _CodeViewState extends State<_CodeView> {
+  final ScrollController _v = ScrollController();
+  final ScrollController _h = ScrollController();
+  String _detectLanguage(String path, String code) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.dart')) return 'dart';
+    if (lower.endsWith('.js') || lower.endsWith('.mjs') || lower.endsWith('.cjs')) return 'javascript';
+    if (lower.endsWith('.ts') || lower.endsWith('.tsx')) return 'typescript';
+    if (lower.endsWith('.jsx')) return 'jsx';
+    if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'html';
+    if (lower.endsWith('.css')) return 'css';
+    if (lower.endsWith('.json')) return 'json';
+    if (lower.endsWith('.py')) return 'python';
+    if (lower.endsWith('.java')) return 'java';
+    if (lower.endsWith('.kt') || lower.endsWith('.kts')) return 'kotlin';
+    if (lower.endsWith('.rs')) return 'rust';
+    if (lower.endsWith('.go')) return 'go';
+    if (lower.endsWith('.rb')) return 'ruby';
+    if (lower.endsWith('.php')) return 'php';
+    if (lower.endsWith('.swift')) return 'swift';
+    if (lower.endsWith('.c') || lower.endsWith('.h')) return 'c';
+    if (lower.endsWith('.cpp') || lower.endsWith('.cc') || lower.endsWith('.hpp')) return 'cpp';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown';
+    // Shebang hints
+    if (code.startsWith('#!') && code.contains('python')) return 'python';
+    if (code.startsWith('#!') && code.contains('node')) return 'javascript';
+    return 'plaintext';
+  }
+  @override
+  Widget build(BuildContext context) {
+    // Access selected path via Inherited widgets by using Consumer
+    final state = ProviderScope.containerOf(context, listen: false).read(playgroundProvider);
+    final path = state.selectedCanvasPath ?? '';
+    final lang = _detectLanguage(path, widget.content);
+    // Vibrant, high-contrast custom theme
+    const theme = {
+      'root': TextStyle(backgroundColor: Color(0xFF0B0E14), color: Color(0xFFE6E6E6)),
+      'comment': TextStyle(color: Color(0xFF6A9955), fontStyle: FontStyle.italic),
+      'quote': TextStyle(color: Color(0xFF6A9955), fontStyle: FontStyle.italic),
+      'keyword': TextStyle(color: Color(0xFF569CD6), fontWeight: FontWeight.bold),
+      'selector-tag': TextStyle(color: Color(0xFF4FC1FF), fontWeight: FontWeight.bold),
+      'literal': TextStyle(color: Color(0xFFB5CEA8)),
+      'section': TextStyle(color: Color(0xFF4EC9B0)),
+      'link': TextStyle(color: Color(0xFFD7BA7D)),
+      'subst': TextStyle(color: Color(0xFFE6E6E6)),
+      'string': TextStyle(color: Color(0xFFCE9178)),
+      'doctag': TextStyle(color: Color(0xFFD7BA7D)),
+      'type': TextStyle(color: Color(0xFF4EC9B0)),
+      'built_in': TextStyle(color: Color(0xFF4EC9B0)),
+      'builtin-name': TextStyle(color: Color(0xFF4EC9B0)),
+      'number': TextStyle(color: Color(0xFFB5CEA8)),
+      'selector-id': TextStyle(color: Color(0xFF9CDCFE)),
+      'selector-class': TextStyle(color: Color(0xFF4EC9B0)),
+      'variable': TextStyle(color: Color(0xFF9CDCFE)),
+      'template-variable': TextStyle(color: Color(0xFF9CDCFE)),
+      'regexp': TextStyle(color: Color(0xFFD16969)),
+      'symbol': TextStyle(color: Color(0xFFBD63C5)),
+      'bullet': TextStyle(color: Color(0xFFD7BA7D)),
+      'title': TextStyle(color: Color(0xFFE6E6E6), fontWeight: FontWeight.bold),
+      'emphasis': TextStyle(color: Color(0xFFE6E6E6), fontStyle: FontStyle.italic),
+      'strong': TextStyle(color: Color(0xFFE6E6E6), fontWeight: FontWeight.bold),
+      'meta': TextStyle(color: Color(0xFF9CDCFE)),
+      'meta-keyword': TextStyle(color: Color(0xFF9CDCFE)),
+      'meta-string': TextStyle(color: Color(0xFFCE9178)),
+      'attr': TextStyle(color: Color(0xFF9CDCFE)),
+      'attribute': TextStyle(color: Color(0xFFD7BA7D)),
+      'params': TextStyle(color: Color(0xFFE6E6E6)),
+      'name': TextStyle(color: Color(0xFF4EC9B0)),
+      'tag': TextStyle(color: Color(0xFF569CD6)),
+    };
+    return Container(
+      color: const Color(0xFF0B0E14),
+      child: Scrollbar(
+        thumbVisibility: true,
+        controller: _v,
+        child: SingleChildScrollView(
+          controller: _v,
+          padding: const EdgeInsets.all(16),
+          child: Scrollbar(
+            thumbVisibility: true,
+            controller: _h,
+            notificationPredicate: (notif) => notif.metrics.axis == Axis.horizontal,
+            child: SingleChildScrollView(
+              controller: _h,
+              scrollDirection: Axis.horizontal,
+              child: HighlightView(
+                widget.content.isEmpty ? '// Canvas content will appear here...' : widget.content,
+                language: lang,
+                theme: theme,
+                textStyle: GoogleFonts.jetBrainsMono(
+                  color: widget.content.isEmpty ? Colors.white.withOpacity(0.45) : Colors.white,
+                  fontSize: 13.5,
+                  height: 1.6,
+                  fontStyle: widget.content.isEmpty ? FontStyle.italic : FontStyle.normal,
+                ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VersionDropdown extends StatelessWidget {
+  final WidgetRef ref;
+  const _VersionDropdown({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(playgroundProvider);
+    final meta = state.selectedCanvasMeta;
+    final current = (meta?['version_number'] as int?) ?? 1;
+    final versions = state.selectedCanvasVersions;
+    return PopupMenuButton<int>(
+      tooltip: 'Canvas versions',
+      position: PopupMenuPosition.under,
+      color: const Color(0xFF1A1D29),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.history, color: Colors.white70, size: 16),
+            const SizedBox(width: 6),
+            Text('v$current', style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 4),
+            const Icon(Icons.arrow_drop_down, color: Colors.white70, size: 18),
+          ],
+        ),
+      ),
+      onOpened: () {
+        final path = state.selectedCanvasPath;
+        if (path != null && versions.isEmpty && !state.loadingVersions) {
+          ref.read(playgroundProvider).fetchCanvasVersions(path);
+        }
+      },
+      itemBuilder: (ctx) {
+        if (state.loadingVersions) {
+          return const [
+            PopupMenuItem<int>(
+              enabled: false,
+              child: SizedBox(
+                height: 20,
+                child: Row(
+                  children: [
+                    SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70)),
+                    SizedBox(width: 10),
+                    Text('Loading versions…', style: TextStyle(color: Colors.white70)),
+                  ],
+                ),
+              ),
+            ),
+          ];
+        }
+        if (versions.isEmpty) {
+          return const [
+            PopupMenuItem<int>(
+              enabled: false,
+              child: Text('No versions yet', style: TextStyle(color: Colors.white70)),
+            ),
+          ];
+        }
+        return versions.map((v) {
+          final ver = (v['version_number'] as int?) ?? 0;
+          final createdAt = (v['created_at'] as String?) ?? '';
+          return PopupMenuItem<int>(
+            value: ver,
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(
-                    Icons.description_outlined,
-                    color: Colors.white70,
-                    size: 16,
+                Text('v$ver', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    createdAt.replaceAll('T', ' ').split('.').first,
+                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  '${content.split('\n').length} lines',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                IconButton(
+                  tooltip: 'View changes',
+                  onPressed: () async {
+                    // Close menu and open diff modal
+                    Navigator.of(ctx).pop();
+                    final path = state.selectedCanvasPath;
+                    if (path == null) return;
+                    final res = await ref.read(playgroundProvider).readVersionAndLatest(path: path, versionNumber: ver);
+                    if (res == null) return;
+                    // Inline diff modal with Preview/Restore/Close
+                    // ignore: use_build_context_synchronously
+                    showModalBottomSheet(
+                      context: ctx,
+                      isScrollControlled: true,
+                      backgroundColor: const Color(0xFF0F1420),
+                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+                      builder: (bctx) {
+                        return _InlineDiffModal(
+                          path: path,
+                          versionNumber: ver,
+                          oldContent: res['old']!,
+                          latestContent: res['latest']!,
+                          ref: ref,
+                        );
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.add_circle_outline, color: Colors.white70, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                 ),
               ],
             ),
-          ),
-          // Content area with better padding and scrolling
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: SelectableText(
-                  content.isEmpty ? '// Canvas content will appear here...' : content,
-                  style: GoogleFonts.jetBrainsMono(
-                    color: content.isEmpty ? Colors.white.withOpacity(0.4) : Colors.white.withOpacity(0.85),
-                    fontSize: 13,
-                    height: 1.6,
-                    fontStyle: content.isEmpty ? FontStyle.italic : FontStyle.normal,
+          );
+        }).toList();
+      },
+      onSelected: (ver) async {
+        final path = state.selectedCanvasPath;
+        if (path == null) return;
+        await ref.read(playgroundProvider).enterCanvasVersionPreview(path: path, versionNumber: ver);
+      },
+    );
+  }
+}
+
+class _InlineDiffModal extends StatelessWidget {
+  final String path;
+  final int versionNumber;
+  final String oldContent;
+  final String latestContent;
+  final WidgetRef ref;
+  const _InlineDiffModal({required this.path, required this.versionNumber, required this.oldContent, required this.latestContent, required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: LayoutBuilder(
+          builder: (ctx, c) {
+            final narrow = c.maxWidth < 720;
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(999)),
                   ),
                 ),
-              ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Text('Changes · v$versionNumber', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                      const Spacer(),
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          Navigator.of(context).pop();
+                          await ref.read(playgroundProvider).enterCanvasVersionPreview(path: path, versionNumber: versionNumber);
+                        },
+                        icon: const Icon(Icons.visibility),
+                        label: const Text('Preview'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final ok = await ref.read(playgroundProvider).restoreCanvasVersion(path: path, versionNumber: versionNumber);
+                          if (ok && context.mounted) {
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Version restored')));
+                          }
+                        },
+                        icon: const Icon(Icons.history),
+                        label: const Text('Restore'),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  height: 420,
+                  child: narrow
+                      ? DiffPreview(path: path, oldContent: oldContent, newContent: latestContent, collapsible: false, scrollable: true)
+                      : SideBySideDiff(path: path, oldContent: oldContent, newContent: latestContent, showHeader: true),
+                ),
+                const SizedBox(height: 16),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewVersionBanner extends StatelessWidget {
+  final WidgetRef ref;
+  const _PreviewVersionBanner({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(playgroundProvider);
+    final ver = state.previewVersionNumber;
+    final path = state.selectedCanvasPath;
+    if (ver == null || path == null) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE9A7).withOpacity(0.08),
+        border: Border(
+          bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFFFE9A7)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Previewing historical version v$ver. You can run/inspect it. This is temporary until you restore or exit preview.',
+              style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 2,
             ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: () => ref.read(playgroundProvider).exitCanvasVersionPreview(),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white70,
+              side: BorderSide(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: const Text('Back to latest'),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final ok = await ref.read(playgroundProvider).restoreCanvasVersion(path: path, versionNumber: ver);
+              if (ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Version restored')));
+                await ref.read(playgroundProvider).exitCanvasVersionPreview();
+              }
+            },
+            icon: const Icon(Icons.history),
+            label: const Text('Restore'),
           ),
         ],
       ),
     );
+  }
+}
+
+class _PreviewNotSupported extends StatelessWidget {
+  const _PreviewNotSupported();
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.visibility_off_outlined, color: Colors.white70),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Oops, we can't preview this code right now",
+            style: GoogleFonts.poppins(color: Colors.white70),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WebPreview extends StatefulWidget {
+  final String content; // HTML with inline CSS/JS
+  const _WebPreview({required this.content});
+  @override
+  State<_WebPreview> createState() => _WebPreviewState();
+}
+
+class _WebPreviewState extends State<_WebPreview> {
+  WebViewController? _controller;
+
+  String _toDataUrl(String html) {
+    final src = _wrapIfNeeded(html);
+    final uri = Uri.dataFromString(
+      src,
+      mimeType: 'text/html',
+      encoding: const Utf8Codec(),
+    );
+    return uri.toString();
+  }
+
+  String _wrapIfNeeded(String content) {
+    final lower = content.toLowerCase();
+    final looksHtml = lower.contains('<html') || lower.contains('<!doctype');
+    if (looksHtml) return content;
+    final hasScriptTag = lower.contains('<script');
+    final hasStyleTag = lower.contains('<style');
+    // Heuristics: if no tags at all, decide if it's JS or CSS by simple patterns
+    final hasTags = lower.contains('<');
+    final maybeJs = content.contains('function ') || content.contains('const ') || content.contains('let ') || content.contains('=>');
+    final maybeCss = !maybeJs && (content.contains('{') && content.contains('}') && content.contains(';'));
+    final bodyInner = StringBuffer();
+    if (hasScriptTag || hasStyleTag || hasTags) {
+      bodyInner.write(content);
+    } else if (maybeJs) {
+      bodyInner.write('<script>\n');
+      bodyInner.write(content);
+      bodyInner.write('\n</script>');
+    } else if (maybeCss) {
+      bodyInner.write('<style>\n');
+      bodyInner.write(content);
+      bodyInner.write('\n</style>');
+      bodyInner.write('<div class="note">CSS loaded. Add HTML to see styled elements.</div>');
+    } else {
+      // Plain text fallback
+      bodyInner.write('<pre>');
+      bodyInner.write(_escapeHtml(content));
+      bodyInner.write('</pre>');
+    }
+    return '<!doctype html><html><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        '<style>html,body{margin:0;padding:16px;background:#0b0f19;color:#eaeaea;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto} .note{opacity:.7;font-style:italic;margin-top:8px}</style>'
+        '</head><body>'
+        '${bodyInner.toString()}'
+        '</body></html>';
+  }
+
+  String _escapeHtml(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      final controller = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(const Color(0x00000000));
+      _controller = controller;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _controller?.loadRequest(Uri.parse(_toDataUrl(widget.content)));
+      });
+    } catch (_) {
+      // If webview unavailable on this platform, do nothing; UI fallback could be added.
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _WebPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.content != oldWidget.content && _controller != null) {
+      _controller!.loadRequest(Uri.parse(_toDataUrl(widget.content)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (kIsWeb) {
+      // Use HtmlElementView-based preview on web
+      return CanvasHtmlPreview(content: widget.content);
+    }
+    if (_controller == null) {
+      // Fallback for platforms without WebView (e.g., Linux): offer to open in browser
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const _PreviewNotSupported(),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final url = Uri.dataFromString(
+                  _wrapIfNeeded(widget.content),
+                  mimeType: 'text/html',
+                  encoding: const Utf8Codec(),
+                );
+                if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                  // ignore: use_build_context_synchronously
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Could not open browser')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Open in browser'),
+            ),
+          ],
+        ),
+      );
+    }
+    return WebViewWidget(controller: _controller!);
   }
 }
 
@@ -1998,9 +2972,27 @@ class _SegmentedMarkdown extends StatelessWidget {
     this.openCanvas,
   });
 
+  // Lightweight LRU cache to memoize parsed segments by content
+  static final Map<String, List<_Segment>> _cache = <String, List<_Segment>>{};
+  static const int _cacheCap = 64;
+  static List<_Segment> _parseSegmentsCached(String input) {
+    final existing = _cache.remove(input);
+    if (existing != null) {
+      _cache[input] = existing; // mark most-recent
+      return existing;
+    }
+    final parsed = _parseSegments(input);
+    _cache[input] = parsed;
+    if (_cache.length > _cacheCap) {
+      final firstKey = _cache.keys.first;
+      _cache.remove(firstKey);
+    }
+    return parsed;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final parts = _parseSegments(data);
+    final parts = _parseSegmentsCached(data);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

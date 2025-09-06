@@ -25,7 +25,7 @@ import 'package:codemate/utils/ndjson_stream.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:codemate/widgets/playground_code_block.dart';
-import 'package:codemate/widgets/agent_tool_event_previews.dart';
+// Duplicate import removed
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -60,7 +60,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
   void _showImageHoverOverlayForPill(BuildContext pillContext, Uint8List bytes) {
     _removeImageHoverOverlay();
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
 
     final renderObject = pillContext.findRenderObject();
@@ -546,7 +546,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   );
                   Map<String, dynamic> toAdd;
                   if (result is Map) {
-                    toAdd = Map<String, dynamic>.from(result as Map);
+                    toAdd = Map<String, dynamic>.from(result);
                   } else {
                     toAdd = {'status': 'unknown', 'result': result};
                   }
@@ -574,8 +574,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     'name': 'analyze_document',
                     'array': 'filesAnalyzed',
                     'offset': (() {
-                      final tr = _localMessages[aiIndex].toolResults as Map<String, dynamic>?;
-                      final len = (tr != null && tr['filesAnalyzed'] is List) ? (tr['filesAnalyzed'] as List).length : 1;
+            final tr = _localMessages[aiIndex].toolResults;
+                      final files = tr?['filesAnalyzed'];
+                      final len = (files is List) ? files.length : 1;
                       return len - 1;
                     })(),
                   });
@@ -1129,6 +1130,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     return ListView.builder(
       padding: const EdgeInsets.all(16.0),
       reverse: true,
+      addAutomaticKeepAlives: false,
+      addRepaintBoundaries: true,
+      cacheExtent: 1000.0,
       itemCount: _localMessages.length,
       itemBuilder: (context, index) {
         final messages = _localMessages.reversed.toList();
@@ -1136,10 +1140,12 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         return Padding(
           key: ValueKey(message.id),
           padding: const EdgeInsets.symmetric(vertical: 4.0),
-          child: AgentMessageBubble(
-            message: message,
-            isLastMessage: index == 0,
-            projectId: widget.projectId,
+          child: RepaintBoundary(
+            child: AgentMessageBubble(
+              message: message,
+              isLastMessage: index == 0,
+              projectId: widget.projectId,
+            ),
           ),
         );
       },
@@ -2775,9 +2781,27 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
     required this.projectId,
   });
 
+  // Simple LRU cache for parsed segments by exact content string
+  static final Map<String, List<_AgentSegment>> _cache = <String, List<_AgentSegment>>{};
+  static const int _cacheCap = 64;
+  static List<_AgentSegment> _parseSegmentsCached(String input) {
+    final existing = _cache.remove(input);
+    if (existing != null) {
+      _cache[input] = existing; // mark as most recently used
+      return existing;
+    }
+    final parsed = _parseSegments(input);
+    _cache[input] = parsed;
+    if (_cache.length > _cacheCap) {
+      final firstKey = _cache.keys.first;
+      _cache.remove(firstKey);
+    }
+    return parsed;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final parts = _parseSegments(data);
+    final parts = _parseSegmentsCached(data);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2933,7 +2957,7 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
         ]);
       case 'implement_feature_and_update_todo':
         {
-          final map = (result is Map) ? Map<String, dynamic>.from(result as Map) : <String, dynamic>{};
+          final map = (result is Map) ? Map<String, dynamic>.from(result) : <String, dynamic>{};
           final edits = (map['edits'] is List) ? List<Map<String, dynamic>>.from(map['edits'] as List) : const <Map<String, dynamic>>[];
           final taskTitle = (map['task_title'] as String?) ?? 'Task';
           return Padding(
