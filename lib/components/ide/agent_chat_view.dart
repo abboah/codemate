@@ -58,7 +58,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     _imageHoverOverlay = null;
   }
 
-  void _showImageHoverOverlayForPill(BuildContext pillContext, Uint8List bytes) {
+  void _showImageHoverOverlayForPill(
+    BuildContext pillContext,
+    Uint8List bytes,
+  ) {
     _removeImageHoverOverlay();
     final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
@@ -78,32 +81,42 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
 
     _imageHoverOverlay = OverlayEntry(
-      builder: (ctx) => Positioned(
-        left: left,
-        top: top,
-        width: previewW,
-        height: previewH,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.45), blurRadius: 16, offset: const Offset(0, 6)),
-                ],
-              ),
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(bytes, width: previewW, height: previewH, fit: BoxFit.cover),
+      builder:
+          (ctx) => Positioned(
+            left: left,
+            top: top,
+            width: previewW,
+            height: previewH,
+            child: IgnorePointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      bytes,
+                      width: previewW,
+                      height: previewH,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
     );
     overlay.insert(_imageHoverOverlay!);
   }
@@ -154,10 +167,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     if (_activeChatId == null) {
       _startNewChat(text, attachmentsToSend);
     } else {
-  // Upload any queued files first; keep user-visible text unchanged
-  String promptText = text;
+      // Upload any queued files first; keep user-visible text unchanged
+      String promptText = text;
       List<Map<String, dynamic>> updatedAttachments = attachmentsToSend;
-      final uploadables = attachmentsToSend.where((a) => a['bytes'] is Uint8List && (a['type'] == 'img' || a['type'] == 'doc')).toList();
+      final uploadables =
+          attachmentsToSend
+              .where(
+                (a) =>
+                    a['bytes'] is Uint8List &&
+                    (a['type'] == 'img' || a['type'] == 'doc'),
+              )
+              .toList();
       if (uploadables.isNotEmpty) {
         setState(() => _isUploading = true);
         try {
@@ -167,12 +187,26 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
             final bytes = a['bytes'] as Uint8List;
             final isImage = (a['type'] == 'img');
             final folder = isImage ? 'images' : 'docs';
-            final safeName = (a['name'] as String?)?.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), '_') ?? 'upload';
+            final safeName =
+                (a['name'] as String?)?.replaceAll(
+                  RegExp(r"[^A-Za-z0-9._-]"),
+                  '_',
+                ) ??
+                'upload';
             final uid = supa.auth.currentUser?.id ?? 'anon';
             final key = '$uid/$folder/${const Uuid().v4()}_$safeName';
-            final mime = (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
-            await supa.storage.from('user-uploads').uploadBinary(key, bytes, fileOptions: FileOptions(contentType: mime));
-            final signed = await supa.storage.from('user-uploads').createSignedUrl(key, 60 * 60);
+            final mime =
+                (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
+            await supa.storage
+                .from('user-uploads')
+                .uploadBinary(
+                  key,
+                  bytes,
+                  fileOptions: FileOptions(contentType: mime),
+                );
+            final signed = await supa.storage
+                .from('user-uploads')
+                .createSignedUrl(key, 60 * 60);
             uploaded.add({
               'type': isImage ? 'img' : 'doc',
               'bucket_url': signed,
@@ -182,7 +216,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
               'size': (a['size'] as int?) ?? bytes.length,
             });
           }
-          final others = attachmentsToSend.where((a) => !(a['bytes'] is Uint8List)).toList();
+          final others =
+              attachmentsToSend
+                  .where((a) => !(a['bytes'] is Uint8List))
+                  .toList();
           updatedAttachments = [...others, ...uploaded];
           // Do not append URLs into the prompt to avoid bloating the user bubble.
           // The backend receives attachedFiles separately and will guide the model accordingly.
@@ -196,7 +233,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         }
       }
 
-      ref.read(agentChatProvider(_activeChatId!).notifier).sendMessage(
+      ref
+          .read(agentChatProvider(_activeChatId!).notifier)
+          .sendMessage(
             text: promptText,
             model: _selectedModel,
             projectId: widget.projectId,
@@ -211,10 +250,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     String text,
     List<Map<String, dynamic>> attachments,
   ) async {
-  // Upload any queued files now (we delay uploads until send). Keep user text unchanged.
-  String promptText = text;
+    // Upload any queued files now (we delay uploads until send). Keep user text unchanged.
+    String promptText = text;
     List<Map<String, dynamic>> updatedAttachments = attachments;
-    final uploadables = attachments.where((a) => a['bytes'] is Uint8List && (a['type'] == 'img' || a['type'] == 'doc')).toList();
+    final uploadables =
+        attachments
+            .where(
+              (a) =>
+                  a['bytes'] is Uint8List &&
+                  (a['type'] == 'img' || a['type'] == 'doc'),
+            )
+            .toList();
     if (uploadables.isNotEmpty) {
       setState(() => _isUploading = true);
       try {
@@ -224,13 +270,27 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           final bytes = a['bytes'] as Uint8List;
           final isImage = (a['type'] == 'img');
           final folder = isImage ? 'images' : 'docs';
-          final safeName = (a['name'] as String?)?.replaceAll(RegExp(r"[^A-Za-z0-9._-]"), '_') ?? 'upload';
+          final safeName =
+              (a['name'] as String?)?.replaceAll(
+                RegExp(r"[^A-Za-z0-9._-]"),
+                '_',
+              ) ??
+              'upload';
           final uid = supa.auth.currentUser?.id ?? 'anon';
           final key = '$uid/$folder/${const Uuid().v4()}_$safeName';
-          final mime = (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
-          await supa.storage.from('user-uploads').uploadBinary(key, bytes, fileOptions: FileOptions(contentType: mime));
+          final mime =
+              (a['mime_type'] as String?) ?? _guessMimeFromName(safeName);
+          await supa.storage
+              .from('user-uploads')
+              .uploadBinary(
+                key,
+                bytes,
+                fileOptions: FileOptions(contentType: mime),
+              );
           // Signed URL for limited-time access
-          final signed = await supa.storage.from('user-uploads').createSignedUrl(key, 60 * 60);
+          final signed = await supa.storage
+              .from('user-uploads')
+              .createSignedUrl(key, 60 * 60);
           uploaded.add({
             'type': isImage ? 'img' : 'doc',
             'bucket_url': signed,
@@ -241,15 +301,16 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           });
         }
         // Replace local upload placeholders in attachments with uploaded metadata
-        final others = attachments.where((a) => !(a['bytes'] is Uint8List)).toList();
+        final others =
+            attachments.where((a) => !(a['bytes'] is Uint8List)).toList();
         updatedAttachments = [...others, ...uploaded];
         // Append links to prompt for model consumption
-  // Do not append URLs into the prompt; send attachment metadata separately.
-  promptText = text;
+        // Do not append URLs into the prompt; send attachment metadata separately.
+        promptText = text;
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Attachment upload failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Attachment upload failed: $e')));
       } finally {
         if (mounted) setState(() => _isUploading = false);
       }
@@ -301,17 +362,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
       final ndjson = NdjsonClient(url: url, headers: headers, body: body);
 
-  final fileEdits = <dynamic>[];
-  final filesRead = <Map<String, dynamic>>[];
-  final filesSearched = <Map<String, dynamic>>[];
-  final inlineEvents = <Map<String, dynamic>>[];
-  final toolCalls = <Map<String, dynamic>>[];
-  // First-class artifact results captured during stream; entries: { name, artifactId?, result }
-  final artifacts = <Map<String, dynamic>>[];
-  // Composite tool executions (implement_feature_and_update_todo) captured during stream
-  final compositeTasks = <Map<String, dynamic>>[];
+      final fileEdits = <dynamic>[];
+      final filesRead = <Map<String, dynamic>>[];
+      final filesSearched = <Map<String, dynamic>>[];
+      final inlineEvents = <Map<String, dynamic>>[];
+      final toolCalls = <Map<String, dynamic>>[];
+      // First-class artifact results captured during stream; entries: { name, artifactId?, result }
+      final artifacts = <Map<String, dynamic>>[];
+      // Composite tool executions (implement_feature_and_update_todo) captured during stream
+      final compositeTasks = <Map<String, dynamic>>[];
       String thoughts = '';
-  final List<String> createdArtifactIds = <String>[];
+      final List<String> createdArtifactIds = <String>[];
       int aiIndex = 1;
       // Switch placeholder to text mode for live deltas
       setState(() {
@@ -477,7 +538,8 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     'offset': fileEdits.length - 1,
                   });
                 }
-              } else if (name == 'implement_feature_and_update_todo' && result is Map) {
+              } else if (name == 'implement_feature_and_update_todo' &&
+                  result is Map) {
                 // Capture composite tool results in a dedicated array for persistence and inline mapping
                 setState(() {
                   compositeTasks.add(Map<String, dynamic>.from(result));
@@ -485,7 +547,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     _localMessages[aiIndex].toolResults ??
                         {'fileEdits': fileEdits},
                   );
-                  tr['compositeTasks'] = List<Map<String, dynamic>>.from(compositeTasks);
+                  tr['compositeTasks'] = List<Map<String, dynamic>>.from(
+                    compositeTasks,
+                  );
                   _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
                     toolResults: tr,
                   );
@@ -541,9 +605,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     _localMessages[aiIndex].toolResults ??
                         {'fileEdits': fileEdits},
                   );
-                  final List<Map<String, dynamic>> filesAnalyzed = List<Map<String, dynamic>>.from(
-                    (tr['filesAnalyzed'] as List? ?? const []),
-                  );
+                  final List<Map<String, dynamic>> filesAnalyzed =
+                      List<Map<String, dynamic>>.from(
+                        (tr['filesAnalyzed'] as List? ?? const []),
+                      );
                   Map<String, dynamic> toAdd;
                   if (result is Map) {
                     toAdd = Map<String, dynamic>.from(result);
@@ -554,18 +619,26 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   bool isDup = false;
                   final fu = (toAdd['file_url']?.toString() ?? '').trim();
                   if (fu.isNotEmpty) {
-                    isDup = filesAnalyzed.any((e) => (e['file_url']?.toString() ?? '') == fu);
+                    isDup = filesAnalyzed.any(
+                      (e) => (e['file_url']?.toString() ?? '') == fu,
+                    );
                   } else {
                     final mt = toAdd['mime_type']?.toString();
                     final bl = toAdd['byte_length']?.toString();
                     if (mt != null && bl != null) {
-                      isDup = filesAnalyzed.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
+                      isDup = filesAnalyzed.any(
+                        (e) =>
+                            (e['mime_type']?.toString() == mt) &&
+                            (e['byte_length']?.toString() == bl),
+                      );
                     }
                   }
                   if (!isDup) {
                     filesAnalyzed.add(toAdd);
                     tr['filesAnalyzed'] = filesAnalyzed;
-                    _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+                    _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                      toolResults: tr,
+                    );
                   }
                 });
                 if (id != null) {
@@ -573,12 +646,13 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                     'index': id,
                     'name': 'analyze_document',
                     'array': 'filesAnalyzed',
-                    'offset': (() {
-            final tr = _localMessages[aiIndex].toolResults;
-                      final files = tr?['filesAnalyzed'];
-                      final len = (files is List) ? files.length : 1;
-                      return len - 1;
-                    })(),
+                    'offset':
+                        (() {
+                          final tr = _localMessages[aiIndex].toolResults;
+                          final files = tr?['filesAnalyzed'];
+                          final len = (files is List) ? files.length : 1;
+                          return len - 1;
+                        })(),
                   });
                 }
               }
@@ -621,10 +695,15 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   (tr['filesAnalyzed'] as List? ?? const []),
                 );
                 final incoming = List<Map<String, dynamic>>.from(
-                  List<dynamic>.from(evt['filesAnalyzed']).map((e) => Map<String, dynamic>.from(e as Map)),
+                  List<dynamic>.from(
+                    evt['filesAnalyzed'],
+                  ).map((e) => Map<String, dynamic>.from(e as Map)),
                 );
                 // Dedupe using file_url first, then mime+byte_length
-                bool isDupEntry(Map<String, dynamic> a, Map<String, dynamic> b) {
+                bool isDupEntry(
+                  Map<String, dynamic> a,
+                  Map<String, dynamic> b,
+                ) {
                   final au = (a['file_url']?.toString() ?? '').trim();
                   final bu = (b['file_url']?.toString() ?? '').trim();
                   if (au.isNotEmpty && bu.isNotEmpty) return au == bu;
@@ -637,6 +716,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   }
                   return false;
                 }
+
                 final newOffsets = <int>[];
                 for (final inc in incoming) {
                   final dup = existing.any((ex) => isDupEntry(ex, inc));
@@ -646,10 +726,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   }
                 }
                 tr['filesAnalyzed'] = existing;
-                _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(toolResults: tr);
+                _localMessages[aiIndex] = _localMessages[aiIndex].copyWith(
+                  toolResults: tr,
+                );
                 // Add synthetic toolCalls per new offset if missing
                 for (final off in newOffsets) {
-                  final exists = toolCalls.any((c) => c['name'] == 'analyze_document' && c['array'] == 'filesAnalyzed' && c['offset'] == off);
+                  final exists = toolCalls.any(
+                    (c) =>
+                        c['name'] == 'analyze_document' &&
+                        c['array'] == 'filesAnalyzed' &&
+                        c['offset'] == off,
+                  );
                   if (!exists) {
                     toolCalls.add({
                       'index': (toolCalls.length + 1),
@@ -664,11 +751,19 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
             if (evt['artifactIds'] is List) {
               createdArtifactIds
                 ..clear()
-                ..addAll(List<dynamic>.from(evt['artifactIds']).map((e) => e.toString()));
+                ..addAll(
+                  List<dynamic>.from(
+                    evt['artifactIds'],
+                  ).map((e) => e.toString()),
+                );
               // Merge artifactIds into artifacts array and toolCalls if missing
               if (artifacts.isNotEmpty) {
                 // Backfill IDs on artifacts
-                for (int i = 0; i < artifacts.length && i < createdArtifactIds.length; i++) {
+                for (
+                  int i = 0;
+                  i < artifacts.length && i < createdArtifactIds.length;
+                  i++
+                ) {
                   final a = Map<String, dynamic>.from(artifacts[i]);
                   a['artifactId'] ??= createdArtifactIds[i];
                   artifacts[i] = a;
@@ -702,7 +797,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
       // Generate title from final streamed text and create chat
       final chatService = ref.read(chatServiceProvider);
-  final title = await chatService.generateChatTitle(promptText, finalText);
+      final title = await chatService.generateChatTitle(promptText, finalText);
 
       final chatResponse =
           await client
@@ -722,11 +817,14 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
       // Sanitize tool_results (strip 'ui') before insert; include filesAnalyzed from streamed tool_results
       final sanitizedToolResults = () {
-        final current = _localMessages.length > 1
-            ? (_localMessages[1].toolResults is Map
-                ? Map<String, dynamic>.from(_localMessages[1].toolResults as Map)
-                : <String, dynamic>{})
-            : <String, dynamic>{};
+        final current =
+            _localMessages.length > 1
+                ? (_localMessages[1].toolResults is Map
+                    ? Map<String, dynamic>.from(
+                      _localMessages[1].toolResults as Map,
+                    )
+                    : <String, dynamic>{})
+                : <String, dynamic>{};
         if (!current.containsKey('fileEdits')) {
           current['fileEdits'] = fileEdits;
         }
@@ -743,21 +841,23 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         'attached_files': updatedAttachments,
         'sent_at': sentAtUser.toIso8601String(),
       });
-      final insertedAi = await client
-          .from('agent_chat_messages')
-          .insert({
-            'chat_id': newChatId,
-            'sender': 'ai',
-            'message_type': 'text',
-            'content': _localMessages[1].content,
-            'thoughts': thoughts.isNotEmpty ? thoughts : null,
-            'tool_results': sanitizedToolResults,
-            'tool_calls': {'events': toolCalls},
-            'sent_at': sentAtAi.toIso8601String(),
-          })
-          .select('id')
-          .single();
-      final String? aiMessageId = (insertedAi as Map<String, dynamic>?)?['id'] as String?;
+      final insertedAi =
+          await client
+              .from('agent_chat_messages')
+              .insert({
+                'chat_id': newChatId,
+                'sender': 'ai',
+                'message_type': 'text',
+                'content': _localMessages[1].content,
+                'thoughts': thoughts.isNotEmpty ? thoughts : null,
+                'tool_results': sanitizedToolResults,
+                'tool_calls': {'events': toolCalls},
+                'sent_at': sentAtAi.toIso8601String(),
+              })
+              .select('id')
+              .single();
+      final String? aiMessageId =
+          (insertedAi as Map<String, dynamic>?)?['id'] as String?;
       if (aiMessageId != null && createdArtifactIds.isNotEmpty) {
         for (final aid in createdArtifactIds) {
           try {
@@ -833,7 +933,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
   Future<void> _pickAndQueueUploads() async {
     try {
-      final existingUploadCount = _attachedFiles.where((f) => f['bytes'] is Uint8List || f['bucket_url'] != null).length;
+      final existingUploadCount =
+          _attachedFiles
+              .where((f) => f['bytes'] is Uint8List || f['bucket_url'] != null)
+              .length;
       final remaining = 3 - existingUploadCount;
       if (remaining <= 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -845,13 +948,30 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         allowMultiple: true,
         withData: true,
         type: FileType.custom,
-        allowedExtensions: ['pdf','png','jpg','jpeg','webp','gif','txt','md','markdown','html','htm','xml'],
+        allowedExtensions: [
+          'pdf',
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'gif',
+          'txt',
+          'md',
+          'markdown',
+          'html',
+          'htm',
+          'xml',
+        ],
       );
       if (result == null || result.files.isEmpty) return;
       final files = result.files.take(remaining).toList();
       if (result.files.length > remaining) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You can attach up to 3 files. Extra files were ignored.')),
+          const SnackBar(
+            content: Text(
+              'You can attach up to 3 files. Extra files were ignored.',
+            ),
+          ),
         );
       }
       final uploads = <Map<String, dynamic>>[];
@@ -859,9 +979,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
         final name = f.name;
         final bytes = f.bytes;
         if (bytes == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not read $name.')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Could not read $name.')));
           continue;
         }
         final ext = name.split('.').last.toLowerCase();
@@ -871,7 +991,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           );
           continue;
         }
-        final isImage = ['png','jpg','jpeg','webp','gif'].contains(ext);
+        final isImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].contains(ext);
         uploads.add({
           'type': isImage ? 'img' : 'doc',
           'name': name,
@@ -882,20 +1002,30 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       }
       if (uploads.isEmpty) return;
       setState(() {
-        _attachedFiles = [
-          ..._attachedFiles,
-          ...uploads,
-        ];
+        _attachedFiles = [..._attachedFiles, ...uploads];
       });
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to pick files: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to pick files: $e')));
     }
   }
 
   bool _isAllowedExt(String ext) {
-    const allowed = ['pdf','png','jpg','jpeg','webp','gif','txt','md','markdown','html','htm','xml'];
+    const allowed = [
+      'pdf',
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'txt',
+      'md',
+      'markdown',
+      'html',
+      'htm',
+      'xml',
+    ];
     return allowed.contains(ext.toLowerCase());
   }
 
@@ -1064,7 +1194,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           ),
           const SizedBox(width: 4),
           // Artifacts pill
-          _ArtifactsPillButton(projectId: widget.projectId, chatId: _activeChatId),
+          _ArtifactsPillButton(
+            projectId: widget.projectId,
+            chatId: _activeChatId,
+          ),
           IconButton(
             icon: const Icon(
               Icons.add_circle_outline_rounded,
@@ -1266,55 +1399,100 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: _attachedFiles.map((f) {
-                            final hasPath = f['path'] is String; // code attachment
-                            final isUpload = f['bytes'] is Uint8List || f['bucket_url'] != null;
-                            final isImg = (f['type'] == 'img');
-                            final title = hasPath ? (f['path'] as String) : (f['name'] as String? ?? 'file');
-                            final icon = hasPath
-                                ? Icons.description_outlined
-                                : (isImg ? Icons.image_outlined : Icons.insert_drive_file_outlined);
-                            final pill = Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                              ),
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(icon, color: Colors.white70, size: 14),
-                                  const SizedBox(width: 6),
-                                  ConstrainedBox(
-                                    constraints: const BoxConstraints(maxWidth: 200),
-                                    child: Text(title, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                          children:
+                              _attachedFiles.map((f) {
+                                final hasPath =
+                                    f['path'] is String; // code attachment
+                                final isUpload =
+                                    f['bytes'] is Uint8List ||
+                                    f['bucket_url'] != null;
+                                final isImg = (f['type'] == 'img');
+                                final title =
+                                    hasPath
+                                        ? (f['path'] as String)
+                                        : (f['name'] as String? ?? 'file');
+                                final icon =
+                                    hasPath
+                                        ? Icons.description_outlined
+                                        : (isImg
+                                            ? Icons.image_outlined
+                                            : Icons.insert_drive_file_outlined);
+                                final pill = Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.12),
+                                    ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  GestureDetector(
-                                    onTap: () {
-                                      if (hasPath) {
-                                        _removeAttachmentByPath(f['path'] as String);
-                                      } else {
-                                        setState(() => _attachedFiles.remove(f));
-                                      }
-                                    },
-                                    child: const Icon(Icons.close, color: Colors.white60, size: 14),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
                                   ),
-                                ],
-                              ),
-                            );
-                            if (isUpload && isImg && f['bytes'] is Uint8List) {
-                              return Builder(
-                                builder: (pillCtx) => MouseRegion(
-                                  onEnter: (_) => _showImageHoverOverlayForPill(pillCtx, f['bytes'] as Uint8List),
-                                  onExit: (_) => _removeImageHoverOverlay(),
-                                  child: pill,
-                                ),
-                              );
-                            }
-                            return pill;
-                          }).toList(),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        icon,
+                                        color: Colors.white70,
+                                        size: 14,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 200,
+                                        ),
+                                        child: Text(
+                                          title,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GestureDetector(
+                                        onTap: () {
+                                          if (hasPath) {
+                                            _removeAttachmentByPath(
+                                              f['path'] as String,
+                                            );
+                                          } else {
+                                            setState(
+                                              () => _attachedFiles.remove(f),
+                                            );
+                                          }
+                                        },
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white60,
+                                          size: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (isUpload &&
+                                    isImg &&
+                                    f['bytes'] is Uint8List) {
+                                  return Builder(
+                                    builder:
+                                        (pillCtx) => MouseRegion(
+                                          onEnter:
+                                              (_) =>
+                                                  _showImageHoverOverlayForPill(
+                                                    pillCtx,
+                                                    f['bytes'] as Uint8List,
+                                                  ),
+                                          onExit:
+                                              (_) => _removeImageHoverOverlay(),
+                                          child: pill,
+                                        ),
+                                  );
+                                }
+                                return pill;
+                              }).toList(),
                         ),
                         // Hover preview rendered in global overlay
                       ],
@@ -1322,12 +1500,26 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                   ),
                 if (_isUploading)
                   Padding(
-                    padding: const EdgeInsets.only(left: 6, right: 6, bottom: 4),
+                    padding: const EdgeInsets.only(
+                      left: 6,
+                      right: 6,
+                      bottom: 4,
+                    ),
                     child: Row(
                       children: [
-                        const SizedBox(width: 16, height: 16, child: MiniWave(size: 16)),
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: MiniWave(size: 16),
+                        ),
                         const SizedBox(width: 8),
-                        Text('Uploading attachments…', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                        Text(
+                          'Uploading attachments…',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1751,7 +1943,9 @@ class AgentMessageBubble extends ConsumerWidget {
         } else if (array == 'compositeTasks' &&
             offset >= 0 &&
             (toolResultsMap2['compositeTasks'] is List)) {
-          final list = List<dynamic>.from(toolResultsMap2['compositeTasks'] as List);
+          final list = List<dynamic>.from(
+            toolResultsMap2['compositeTasks'] as List,
+          );
           if (offset < list.length) {
             final r = list[offset];
             if (r is Map<String, dynamic>) {
@@ -1764,7 +1958,9 @@ class AgentMessageBubble extends ConsumerWidget {
         } else if (array == 'filesAnalyzed' &&
             offset >= 0 &&
             (toolResultsMap2['filesAnalyzed'] is List)) {
-          final list = List<dynamic>.from(toolResultsMap2['filesAnalyzed'] as List);
+          final list = List<dynamic>.from(
+            toolResultsMap2['filesAnalyzed'] as List,
+          );
           if (offset < list.length) {
             final r = list[offset];
             if (r is Map<String, dynamic>) {
@@ -1828,7 +2024,10 @@ class AgentMessageBubble extends ConsumerWidget {
                   const SizedBox(height: 8),
                   ...edits.map((e) {
                     final path = (e['path'] as String?) ?? 'unknown';
-                    final isNew = ((e['operation'] as String?) ?? '').toLowerCase() == 'create' || ((e['old_content'] as String?) ?? '').isEmpty;
+                    final isNew =
+                        ((e['operation'] as String?) ?? '').toLowerCase() ==
+                            'create' ||
+                        ((e['old_content'] as String?) ?? '').isEmpty;
                     return InkWell(
                       onTap: () {
                         try {
@@ -1913,110 +2112,177 @@ class AgentMessageBubble extends ConsumerWidget {
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: attached.map((a) {
-                      // Code attachment (has 'path' and 'content')
-                      if (a is Map && a['path'] is String && a['content'] is String) {
-                        final path = a['path'] as String;
-                        final content = a['content'] as String? ?? '';
-                        final preview = content.split('\n').take(5).join('\n');
-                        return InkWell(
-                          onTap: () {
-                            final files = ref.read(projectFilesProvider(projectId)).files;
-                            final file = files.firstWhere((f) => f.path == path, orElse: () => throw Exception('File not found'));
-                            ref.read(codeViewProvider.notifier).openFile(file);
-                            _expandFileTreeToPath(ref, projectId, path);
-                          },
-                          child: Container(
-                            width: 320,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.25),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white.withOpacity(0.15)),
-                            ),
-                            padding: const EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
+                    children:
+                        attached.map((a) {
+                          // Code attachment (has 'path' and 'content')
+                          if (a is Map &&
+                              a['path'] is String &&
+                              a['content'] is String) {
+                            final path = a['path'] as String;
+                            final content = a['content'] as String? ?? '';
+                            final preview = content
+                                .split('\n')
+                                .take(5)
+                                .join('\n');
+                            return InkWell(
+                              onTap: () {
+                                final files =
+                                    ref
+                                        .read(projectFilesProvider(projectId))
+                                        .files;
+                                final file = files.firstWhere(
+                                  (f) => f.path == path,
+                                  orElse:
+                                      () => throw Exception('File not found'),
+                                );
+                                ref
+                                    .read(codeViewProvider.notifier)
+                                    .openFile(file);
+                                _expandFileTreeToPath(ref, projectId, path);
+                              },
+                              child: Container(
+                                width: 320,
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.25),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.15),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Icon(Icons.description_outlined, size: 14, color: Colors.white70),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(path, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.description_outlined,
+                                          size: 14,
+                                          color: Colors.white70,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            path,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: GoogleFonts.poppins(
+                                              color: Colors.white70,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text(
+                                        preview,
+                                        style: GoogleFonts.robotoMono(
+                                          color: Colors.white.withOpacity(0.9),
+                                          fontSize: 12,
+                                          height: 1.4,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 6),
-                                Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(6)),
-                                  padding: const EdgeInsets.all(8),
-                                  child: Text(
-                                    preview,
-                                    style: GoogleFonts.robotoMono(color: Colors.white.withOpacity(0.9), fontSize: 12, height: 1.4),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      // Uploaded attachment (has 'type' and 'bucket_url')
-                      final isImg = (a['type'] == 'img');
-                      final name = (a['name'] as String?) ?? 'attachment';
-                      final url = (a['bucket_url'] as String?) ?? '';
-                      return InkWell(
-                        onTap: () async {
-                          if (url.isNotEmpty) {
-                            final uri = Uri.parse(url);
-                            if (await canLaunchUrl(uri)) {
-                              await launchUrl(uri, mode: LaunchMode.externalApplication);
-                            }
+                              ),
+                            );
                           }
-                        },
-                        child: Container(
-                          width: isImg ? 340 : 320,
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white.withOpacity(0.15)),
-                          ),
-                          padding: const EdgeInsets.all(10),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                          // Uploaded attachment (has 'type' and 'bucket_url')
+                          final isImg = (a['type'] == 'img');
+                          final name = (a['name'] as String?) ?? 'attachment';
+                          final url = (a['bucket_url'] as String?) ?? '';
+                          return InkWell(
+                            onTap: () async {
+                              if (url.isNotEmpty) {
+                                final uri = Uri.parse(url);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(
+                                    uri,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              }
+                            },
+                            child: Container(
+                              width: isImg ? 340 : 320,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.15),
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(isImg ? Icons.image_outlined : Icons.insert_drive_file_outlined, size: 14, color: Colors.white70),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(name, overflow: TextOverflow.ellipsis, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        isImg
+                                            ? Icons.image_outlined
+                                            : Icons.insert_drive_file_outlined,
+                                        size: 14,
+                                        color: Colors.white70,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.white70,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 6),
+                                  if (isImg && url.isNotEmpty)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Image.network(
+                                        url,
+                                        height: 160,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withOpacity(0.3),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      padding: const EdgeInsets.all(8),
+                                      child: Text(
+                                        url.isNotEmpty
+                                            ? url
+                                            : 'No link available',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.robotoMono(
+                                          color: Colors.white.withOpacity(0.9),
+                                          fontSize: 12,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                    ),
                                 ],
                               ),
-                              const SizedBox(height: 6),
-                              if (isImg && url.isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(6),
-                                  child: Image.network(url, height: 160, width: double.infinity, fit: BoxFit.cover),
-                                )
-                              else
-                                Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.3), borderRadius: BorderRadius.circular(6)),
-                                  padding: const EdgeInsets.all(8),
-                                  child: Text(
-                                    url.isNotEmpty ? url : 'No link available',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.robotoMono(color: Colors.white.withOpacity(0.9), fontSize: 12, height: 1.4),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                            ),
+                          );
+                        }).toList(),
                   ),
                   const SizedBox(height: 12),
                   const Divider(color: Colors.white24, height: 1),
@@ -2204,11 +2470,15 @@ class _ArtifactsPillButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       ),
       icon: const Icon(Icons.storage_rounded, size: 16, color: Colors.white70),
-      label: Text('Artifacts', style: GoogleFonts.poppins(color: Colors.white70)),
+      label: Text(
+        'Artifacts',
+        style: GoogleFonts.poppins(color: Colors.white70),
+      ),
       onPressed: () async {
         await showDialog(
           context: context,
-    builder: (ctx) => _ArtifactsDialog(projectId: projectId, chatId: chatId),
+          builder:
+              (ctx) => _ArtifactsDialog(projectId: projectId, chatId: chatId),
         );
       },
     );
@@ -2250,20 +2520,21 @@ class _ArtifactsDialogState extends State<_ArtifactsDialog> {
           _loading = false;
         });
         return;
-     }
+      }
       final table = supa.from('agent_artifacts');
       var query = table
           .select('id, artifact_type, data, key, last_modified, chat_id')
           .eq('project_id', widget.projectId);
       if (_chatOnly && widget.chatId != null && widget.chatId!.isNotEmpty) {
-  // Safe to use non-null assertion since we checked for null and emptiness above
-  query = query.eq('chat_id', widget.chatId!);
+        // Safe to use non-null assertion since we checked for null and emptiness above
+        query = query.eq('chat_id', widget.chatId!);
       }
       final res = await query.order('last_modified', ascending: false);
-      final list = (res as List)
-          .whereType<Map<String, dynamic>>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+      final list =
+          (res as List)
+              .whereType<Map<String, dynamic>>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
       setState(() {
         _rows = list;
         _loading = false;
@@ -2292,7 +2563,13 @@ class _ArtifactsDialogState extends State<_ArtifactsDialog> {
               children: [
                 const Icon(Icons.storage_rounded, color: Colors.white70),
                 const SizedBox(width: 8),
-                Text('Artifacts', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
+                Text(
+                  'Artifacts',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const SizedBox(width: 12),
                 Container(
                   padding: const EdgeInsets.all(2),
@@ -2369,25 +2646,29 @@ class _ArtifactsDialogState extends State<_ArtifactsDialog> {
                 child: SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: _rows.map((row) {
-                      final name = _artifactNameFromType(row['artifact_type'] as String?);
-                      final resultPayload = _artifactResultPayload(row);
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.04),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white.withOpacity(0.10)),
-                        ),
-                        child: AgentToolEventPreviews(events: [
-                          {
-                            'name': name,
-                            'result': resultPayload,
-                          }
-                        ]),
-                      );
-                    }).toList(),
+                    children:
+                        _rows.map((row) {
+                          final name = _artifactNameFromType(
+                            row['artifact_type'] as String?,
+                          );
+                          final resultPayload = _artifactResultPayload(row);
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.04),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.10),
+                              ),
+                            ),
+                            child: AgentToolEventPreviews(
+                              events: [
+                                {'name': name, 'result': resultPayload},
+                              ],
+                            ),
+                          );
+                        }).toList(),
                   ),
                 ),
               ),
@@ -2426,7 +2707,11 @@ class _SmallToggle extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
-  const _SmallToggle({required this.label, required this.selected, required this.onTap});
+  const _SmallToggle({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2782,7 +3067,8 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
   });
 
   // Simple LRU cache for parsed segments by exact content string
-  static final Map<String, List<_AgentSegment>> _cache = <String, List<_AgentSegment>>{};
+  static final Map<String, List<_AgentSegment>> _cache =
+      <String, List<_AgentSegment>>{};
   static const int _cacheCap = 64;
   static List<_AgentSegment> _parseSegmentsCached(String input) {
     final existing = _cache.remove(input);
@@ -2875,7 +3161,13 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
               path: path,
               oldContent: oldContent,
               newContent: newContent,
-              isNew: ((result is Map && ((result['old_content'] as String?) ?? '').isEmpty) || (result is Map && ((result['operation'] as String?) ?? '').toLowerCase() == 'create')),
+              isNew:
+                  ((result is Map &&
+                          ((result['old_content'] as String?) ?? '').isEmpty) ||
+                      (result is Map &&
+                          ((result['operation'] as String?) ?? '')
+                                  .toLowerCase() ==
+                              'create')),
               onTap: () async {
                 // First open the file in the code editor
                 try {
@@ -2947,18 +3239,28 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
       case 'todo_list_create':
       case 'todo_list_check':
       case 'artifact_read':
-        return AgentToolEventPreviews(events: [
-          {'name': name, 'result': result},
-        ]);
+        return AgentToolEventPreviews(
+          events: [
+            {'name': name, 'result': result},
+          ],
+        );
       case 'analyze_document':
         // Render using the same preview widget infra
-        return AgentToolEventPreviews(events: [
-          {'name': name, 'result': result},
-        ]);
+        return AgentToolEventPreviews(
+          events: [
+            {'name': name, 'result': result},
+          ],
+        );
       case 'implement_feature_and_update_todo':
         {
-          final map = (result is Map) ? Map<String, dynamic>.from(result) : <String, dynamic>{};
-          final edits = (map['edits'] is List) ? List<Map<String, dynamic>>.from(map['edits'] as List) : const <Map<String, dynamic>>[];
+          final map =
+              (result is Map)
+                  ? Map<String, dynamic>.from(result)
+                  : <String, dynamic>{};
+          final edits =
+              (map['edits'] is List)
+                  ? List<Map<String, dynamic>>.from(map['edits'] as List)
+                  : const <Map<String, dynamic>>[];
           final taskTitle = (map['task_title'] as String?) ?? 'Task';
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 6.0),
@@ -2967,12 +3269,19 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.task_alt, color: Color(0xFF2CB67D), size: 16),
+                    const Icon(
+                      Icons.task_alt,
+                      color: Color(0xFF2CB67D),
+                      size: 16,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'Completed: $taskTitle',
-                        style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w700),
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -2980,31 +3289,50 @@ class _AgentSegmentedMarkdown extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 for (final e in edits)
-                  Builder(builder: (context) {
-                    final path = (e['path'] as String?) ?? 'unknown';
-                    final oldC = (e['old_content'] as String?) ?? '';
-                    final newC = (e['new_content'] as String?) ?? '';
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: DiffPreview(
-                        path: path,
-                        oldContent: oldC,
-                        newContent: newC,
-                        isNew: ((e['operation'] as String?) ?? '').toLowerCase() == 'create' || (oldC.isEmpty),
-                        onTap: () async {
-                          // Try to open file in editor first
-                          try {
-                            final files = ref.read(projectFilesProvider(projectId)).files;
-                            final file = files.firstWhere((f) => f.path == path);
-                            ref.read(codeViewProvider.notifier).openFile(file);
-                            _expandFileTreeToPath(ref, projectId, path);
-                          } catch (_) {}
-                          // Then show diff overlay
-                          ref.read(diffOverlayProvider).showOverlay(path: path, oldContent: oldC, newContent: newC);
-                        },
-                      ),
-                    );
-                  }),
+                  Builder(
+                    builder: (context) {
+                      final path = (e['path'] as String?) ?? 'unknown';
+                      final oldC = (e['old_content'] as String?) ?? '';
+                      final newC = (e['new_content'] as String?) ?? '';
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: DiffPreview(
+                          path: path,
+                          oldContent: oldC,
+                          newContent: newC,
+                          isNew:
+                              ((e['operation'] as String?) ?? '')
+                                      .toLowerCase() ==
+                                  'create' ||
+                              (oldC.isEmpty),
+                          onTap: () async {
+                            // Try to open file in editor first
+                            try {
+                              final files =
+                                  ref
+                                      .read(projectFilesProvider(projectId))
+                                      .files;
+                              final file = files.firstWhere(
+                                (f) => f.path == path,
+                              );
+                              ref
+                                  .read(codeViewProvider.notifier)
+                                  .openFile(file);
+                              _expandFileTreeToPath(ref, projectId, path);
+                            } catch (_) {}
+                            // Then show diff overlay
+                            ref
+                                .read(diffOverlayProvider)
+                                .showOverlay(
+                                  path: path,
+                                  oldContent: oldC,
+                                  newContent: newC,
+                                );
+                          },
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           );

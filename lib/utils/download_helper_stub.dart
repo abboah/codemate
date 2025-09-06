@@ -10,7 +10,8 @@ class DownloadHelper {
   }) async {
     try {
       // Try common downloads directories
-      final home = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'];
       final candidates = <String>[
         if (home != null) '$home/Downloads',
         Directory.current.path,

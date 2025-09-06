@@ -11,9 +11,10 @@ class DownloadHelper {
     try {
       final bytes = html.Blob([content], mime);
       final url = html.Url.createObjectUrl(bytes);
-      final anchor = html.AnchorElement(href: url)
-        ..download = filename
-        ..style.display = 'none';
+      final anchor =
+          html.AnchorElement(href: url)
+            ..download = filename
+            ..style.display = 'none';
       html.document.body?.append(anchor);
       anchor.click();
       anchor.remove();

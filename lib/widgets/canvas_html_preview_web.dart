@@ -6,7 +6,8 @@ import 'dart:ui_web' as ui; // For platformViewRegistry
 import 'package:flutter/material.dart';
 
 class CanvasHtmlPreview extends StatefulWidget {
-  final String content; // HTML with optional inline CSS/JS; non-HTML wrapped heuristically
+  final String
+  content; // HTML with optional inline CSS/JS; non-HTML wrapped heuristically
   const CanvasHtmlPreview({super.key, required this.content});
 
   @override
@@ -24,29 +25,35 @@ class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
   }
 
   void _registerView(String content) {
-    _viewTypeId = 'canvas-html-preview-${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(this)}';
+    _viewTypeId =
+        'canvas-html-preview-${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(this)}';
     // Register a factory that creates the iframe; capture reference for updates
     // ignore: undefined_prefixed_name
     ui.platformViewRegistry.registerViewFactory(_viewTypeId, (int viewId) {
-      final iframe = html.IFrameElement()
-        ..style.border = '0'
-        ..style.width = '100%'
-        ..style.height = '100%'
-        // Allow scripts and same-origin so localStorage and cookies APIs work
-        ..sandbox?.add('allow-scripts')
-        ..sandbox?.add('allow-same-origin')
-        // Allow pointer lock for mouse capture (useful for web apps with mouse navigation)
-        ..sandbox?.add('allow-pointer-lock')
-        // Make the iframe focusable and request focus on click so mouse/keyboard events go inside
-        ..tabIndex = 0
-        // Use srcdoc to guarantee same-origin about:srcdoc document, enabling localStorage
-        ..srcdoc = _wrapIfNeeded(content);
+      final iframe =
+          html.IFrameElement()
+            ..style.border = '0'
+            ..style.width = '100%'
+            ..style.height = '100%'
+            // Allow scripts and same-origin so localStorage and cookies APIs work
+            ..sandbox?.add('allow-scripts')
+            ..sandbox?.add('allow-same-origin')
+            // Allow pointer lock for mouse capture (useful for web apps with mouse navigation)
+            ..sandbox?.add('allow-pointer-lock')
+            // Make the iframe focusable and request focus on click so mouse/keyboard events go inside
+            ..tabIndex = 0
+            // Use srcdoc to guarantee same-origin about:srcdoc document, enabling localStorage
+            ..srcdoc = _wrapIfNeeded(content);
       // Focus on click for better input/gesture handling inside the app
       iframe.onClick.listen((_) {
         iframe.focus();
         try {
           // Attempt to request pointer lock; ignore failures
-          (iframe.contentWindow as dynamic).document?.documentElement?.requestPointerLock?.call();
+          (iframe.contentWindow as dynamic)
+              .document
+              ?.documentElement
+              ?.requestPointerLock
+              ?.call();
         } catch (_) {}
       });
       _iframe = iframe;
@@ -61,8 +68,16 @@ class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
     final hasScriptTag = lower.contains('<script');
     final hasStyleTag = lower.contains('<style');
     final hasTags = lower.contains('<');
-    final maybeJs = content.contains('function ') || content.contains('const ') || content.contains('let ') || content.contains('=>');
-    final maybeCss = !maybeJs && (content.contains('{') && content.contains('}') && content.contains(';'));
+    final maybeJs =
+        content.contains('function ') ||
+        content.contains('const ') ||
+        content.contains('let ') ||
+        content.contains('=>');
+    final maybeCss =
+        !maybeJs &&
+        (content.contains('{') &&
+            content.contains('}') &&
+            content.contains(';'));
     final bodyInner = StringBuffer();
     if (hasScriptTag || hasStyleTag || hasTags) {
       bodyInner.write(content);
@@ -74,7 +89,9 @@ class _CanvasHtmlPreviewState extends State<CanvasHtmlPreview> {
       bodyInner.write('<style>\n');
       bodyInner.write(content);
       bodyInner.write('\n<\/style>');
-      bodyInner.write('<div class="note">CSS loaded. Add HTML to see styled elements.</div>');
+      bodyInner.write(
+        '<div class="note">CSS loaded. Add HTML to see styled elements.</div>',
+      );
     } else {
       bodyInner.write('<pre>');
       bodyInner.write(_escapeHtml(content));
