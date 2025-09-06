@@ -41,40 +41,49 @@ class PlaygroundState extends ChangeNotifier {
   final List<PlaygroundMessage> messages = [];
   final List<Map<String, dynamic>> chats = []; // { id, title, created_at }
   // Canvas state
-  final List<Map<String, dynamic>> canvasFiles = []; // { path, last_modified, description?, file_type?, can_implement_in_canvas?, version_number? }
+  final List<Map<String, dynamic>> canvasFiles =
+      []; // { path, last_modified, description?, file_type?, can_implement_in_canvas?, version_number? }
   // Artifacts state
   final List<Map<String, dynamic>> artifacts =
       []; // { id, title, artifact_type, last_modified, data }
   String? selectedCanvasPath;
   String? selectedCanvasContent;
-  Map<String, dynamic>? selectedCanvasMeta; // { description, file_type, can_implement_in_canvas, version_number }
+  Map<String, dynamic>?
+  selectedCanvasMeta; // { description, file_type, can_implement_in_canvas, version_number }
   bool loadingCanvas = false;
   // Versions state for current selected canvas
   List<Map<String, dynamic>> selectedCanvasVersions = const [];
   bool loadingVersions = false;
   bool loadingVersionPreview = false;
-  int? previewVersionNumber; // when not null, canvas shows a historical version without changing DB
+  int?
+  previewVersionNumber; // when not null, canvas shows a historical version without changing DB
 
   // Cache for a selected version preview content (to support quick compare/restore UI)
   Map<int, String> _versionContentCache = {};
 
-  Future<String?> readCanvasVersion({required String path, required int versionNumber}) async {
+  Future<String?> readCanvasVersion({
+    required String path,
+    required int versionNumber,
+  }) async {
     if (chatId == null) return null;
     try {
       loadingVersionPreview = true;
       notifyListeners();
       // Resolve file id
-      final fileRow = await _client
-          .from('canvas_files')
-          .select('id')
-          .match({'chat_id': chatId!, 'path': path})
-          .single();
-    final snap = await _client
-      .from('canvas_file_versions')
-      .select('content, description, file_type, can_implement_in_canvas')
-          .eq('file_id', fileRow['id'])
-          .eq('version_number', versionNumber)
-          .single();
+      final fileRow =
+          await _client.from('canvas_files').select('id').match({
+            'chat_id': chatId!,
+            'path': path,
+          }).single();
+      final snap =
+          await _client
+              .from('canvas_file_versions')
+              .select(
+                'content, description, file_type, can_implement_in_canvas',
+              )
+              .eq('file_id', fileRow['id'])
+              .eq('version_number', versionNumber)
+              .single();
       final content = (snap['content'] as String?) ?? '';
       _versionContentCache[versionNumber] = content;
       return content;
@@ -86,33 +95,43 @@ class PlaygroundState extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, String>?> readVersionAndLatest({required String path, required int versionNumber}) async {
+  Future<Map<String, String>?> readVersionAndLatest({
+    required String path,
+    required int versionNumber,
+  }) async {
     // Returns { old: versionContent, latest: currentContent }
-    final latest = selectedCanvasContent ?? await fetchCanvasFileContent(path) ?? '';
+    final latest =
+        selectedCanvasContent ?? await fetchCanvasFileContent(path) ?? '';
     String? old = _versionContentCache[versionNumber];
     old ??= await readCanvasVersion(path: path, versionNumber: versionNumber);
     if (old == null) return null;
-    return { 'old': old, 'latest': latest };
+    return {'old': old, 'latest': latest};
   }
 
   // Enter a temporary preview of a historical version without modifying DB state
-  Future<void> enterCanvasVersionPreview({required String path, required int versionNumber}) async {
+  Future<void> enterCanvasVersionPreview({
+    required String path,
+    required int versionNumber,
+  }) async {
     if (chatId == null) return;
     loadingCanvas = true;
     notifyListeners();
     try {
       // Resolve file id and fetch snapshot with meta
-      final fileRow = await _client
-          .from('canvas_files')
-          .select('id')
-          .match({'chat_id': chatId!, 'path': path})
-          .single();
-      final snap = await _client
-          .from('canvas_file_versions')
-          .select('content, description, file_type, can_implement_in_canvas')
-          .eq('file_id', fileRow['id'])
-          .eq('version_number', versionNumber)
-          .single();
+      final fileRow =
+          await _client.from('canvas_files').select('id').match({
+            'chat_id': chatId!,
+            'path': path,
+          }).single();
+      final snap =
+          await _client
+              .from('canvas_file_versions')
+              .select(
+                'content, description, file_type, can_implement_in_canvas',
+              )
+              .eq('file_id', fileRow['id'])
+              .eq('version_number', versionNumber)
+              .single();
       selectedCanvasPath = path; // ensure path is set
       selectedCanvasContent = (snap['content'] as String?) ?? '';
       selectedCanvasMeta = {
@@ -161,6 +180,10 @@ class PlaygroundState extends ChangeNotifier {
 
   Future<void> loadChat(String chatId) async {
     this.chatId = chatId;
+    // Reset any temporary version preview state on chat switch
+    previewVersionNumber = null;
+    selectedCanvasVersions = const [];
+    _versionContentCache.clear();
     // Load chat title
     try {
       final row =
@@ -194,10 +217,26 @@ class PlaygroundState extends ChangeNotifier {
           ),
         ),
       );
-    // Load canvas files for this chat
+    // Load canvas files for this chat and open the most recent file if available
     try {
       await fetchCanvasFiles();
-    } catch (_) {}
+      if (canvasFiles.isNotEmpty) {
+        // Pick latest by last_modified (desc)
+        canvasFiles.sort((a, b) {
+          final as = (a['last_modified'] as String?) ?? '';
+          final bs = (b['last_modified'] as String?) ?? '';
+          return bs.compareTo(as);
+        });
+        final latestPath = canvasFiles.first['path'] as String?;
+        if (latestPath != null) {
+          await openCanvasFile(latestPath);
+        }
+      } else {
+        closeCanvas();
+      }
+    } catch (_) {
+      closeCanvas();
+    }
     // Load artifacts for this chat
     try {
       await fetchArtifacts();
@@ -479,10 +518,13 @@ class PlaygroundState extends ChangeNotifier {
     if (chatId == null) return null;
     try {
       final row =
-          await _client.from('canvas_files').select('content, description, file_type, can_implement_in_canvas, version_number').match({
-            'chat_id': chatId!,
-            'path': path,
-          }).single();
+          await _client
+              .from('canvas_files')
+              .select(
+                'content, description, file_type, can_implement_in_canvas, version_number',
+              )
+              .match({'chat_id': chatId!, 'path': path})
+              .single();
       // Update selected meta opportunistically if this matches
       if (selectedCanvasPath == path) {
         selectedCanvasMeta = {
@@ -536,7 +578,9 @@ class PlaygroundState extends ChangeNotifier {
     }
     final rows = await _client
         .from('canvas_files')
-        .select('path, last_modified, description, file_type, can_implement_in_canvas, version_number')
+        .select(
+          'path, last_modified, description, file_type, can_implement_in_canvas, version_number',
+        )
         .eq('chat_id', chatId!)
         .order('path', ascending: true);
     canvasFiles
@@ -585,10 +629,13 @@ class PlaygroundState extends ChangeNotifier {
     notifyListeners();
     try {
       final row =
-          await _client.from('canvas_files').select('content, description, file_type, can_implement_in_canvas, version_number').match({
-            'chat_id': chatId!,
-            'path': path,
-          }).single();
+          await _client
+              .from('canvas_files')
+              .select(
+                'content, description, file_type, can_implement_in_canvas, version_number',
+              )
+              .match({'chat_id': chatId!, 'path': path})
+              .single();
       selectedCanvasContent = (row['content'] as String?) ?? '';
       selectedCanvasMeta = {
         'description': row['description'],
@@ -597,7 +644,9 @@ class PlaygroundState extends ChangeNotifier {
         'version_number': row['version_number'],
       };
       // Load versions list lazily
-      try { await fetchCanvasVersions(path); } catch (_) {}
+      try {
+        await fetchCanvasVersions(path);
+      } catch (_) {}
     } finally {
       loadingCanvas = false;
       notifyListeners();
@@ -619,14 +668,16 @@ class PlaygroundState extends ChangeNotifier {
     notifyListeners();
     try {
       // Call edge function tool via RPC-equivalent table read
-      final fileRow = await _client
-          .from('canvas_files')
-          .select('id')
-          .match({'chat_id': chatId!, 'path': path})
-          .single();
+      final fileRow =
+          await _client.from('canvas_files').select('id').match({
+            'chat_id': chatId!,
+            'path': path,
+          }).single();
       final versions = await _client
           .from('canvas_file_versions')
-          .select('version_number, created_at, description, file_type, can_implement_in_canvas')
+          .select(
+            'version_number, created_at, description, file_type, can_implement_in_canvas',
+          )
           .eq('file_id', fileRow['id'])
           .order('version_number', ascending: false)
           .limit(30);
@@ -639,21 +690,26 @@ class PlaygroundState extends ChangeNotifier {
     }
   }
 
-  Future<bool> restoreCanvasVersion({required String path, required int versionNumber}) async {
+  Future<bool> restoreCanvasVersion({
+    required String path,
+    required int versionNumber,
+  }) async {
     if (chatId == null) return false;
     try {
       // Read the snapshot content
-      final fileRow = await _client
-          .from('canvas_files')
-          .select('id, version_number')
-          .match({'chat_id': chatId!, 'path': path})
-          .single();
-      final snapshot = await _client
-          .from('canvas_file_versions')
-          .select('content, description, file_type, can_implement_in_canvas')
-          .eq('file_id', fileRow['id'])
-          .eq('version_number', versionNumber)
-          .single();
+      final fileRow =
+          await _client.from('canvas_files').select('id, version_number').match(
+            {'chat_id': chatId!, 'path': path},
+          ).single();
+      final snapshot =
+          await _client
+              .from('canvas_file_versions')
+              .select(
+                'content, description, file_type, can_implement_in_canvas',
+              )
+              .eq('file_id', fileRow['id'])
+              .eq('version_number', versionNumber)
+              .single();
       final nextVersion = (fileRow['version_number'] as int? ?? 1) + 1;
       await _client
           .from('canvas_files')
@@ -661,7 +717,8 @@ class PlaygroundState extends ChangeNotifier {
             'content': snapshot['content'] ?? '',
             'description': snapshot['description'],
             'file_type': snapshot['file_type'],
-            'can_implement_in_canvas': snapshot['can_implement_in_canvas'] ?? false,
+            'can_implement_in_canvas':
+                snapshot['can_implement_in_canvas'] ?? false,
             'version_number': nextVersion,
             'last_modified': DateTime.now().toIso8601String(),
           })

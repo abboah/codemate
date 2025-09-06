@@ -132,93 +132,100 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       return;
     }
     final current = state.selectedCanvasPath;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: const Color(0xFF0F1420),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  children: [
-                    Text(
-                      'Canvas files',
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+    String? selected;
+    // Suspend HTML iframe interactions while bottom sheet is open to avoid click-through
+    try {
+      CanvasHtmlOverlayController.instance.suspend();
+      selected = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: const Color(0xFF0F1420),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        builder: (ctx) {
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Canvas files',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                    ),
-                  ],
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  addAutomaticKeepAlives: false,
-                  addRepaintBoundaries: true,
-                  cacheExtent: 600.0,
-                  itemCount: files.length,
-                  itemBuilder: (c, i) {
-                    final f = files[i];
-                    final path = f['path'] as String? ?? '';
-                    final desc = (f['description'] as String?)?.trim();
-                    final label =
-                        (desc != null && desc.isNotEmpty)
-                            ? desc
-                            : _formatCanvasTitle(path);
-                    final isCurrent = current == path;
-                    return RepaintBoundary(
-                      child: ListTile(
-                        dense: true,
-                        leading: Icon(
-                          Icons.insert_drive_file,
-                          color:
-                              isCurrent
-                                  ? const Color(0xFF7F5AF0)
-                                  : Colors.white70,
-                        ),
-                        title: Text(
-                          label,
-                          style: GoogleFonts.poppins(color: Colors.white),
-                        ),
-                        subtitle: Text(
-                          path,
-                          style: GoogleFonts.poppins(
-                            color: Colors.white54,
-                            fontSize: 12,
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    addAutomaticKeepAlives: false,
+                    addRepaintBoundaries: true,
+                    cacheExtent: 600.0,
+                    itemCount: files.length,
+                    itemBuilder: (c, i) {
+                      final f = files[i];
+                      final path = f['path'] as String? ?? '';
+                      final desc = (f['description'] as String?)?.trim();
+                      final label =
+                          (desc != null && desc.isNotEmpty)
+                              ? desc
+                              : _formatCanvasTitle(path);
+                      final isCurrent = current == path;
+                      return RepaintBoundary(
+                        child: ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.insert_drive_file,
+                            color:
+                                isCurrent
+                                    ? const Color(0xFF7F5AF0)
+                                    : Colors.white70,
                           ),
+                          title: Text(
+                            label,
+                            style: GoogleFonts.poppins(color: Colors.white),
+                          ),
+                          subtitle: Text(
+                            path,
+                            style: GoogleFonts.poppins(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing:
+                              isCurrent
+                                  ? const Icon(
+                                    Icons.check,
+                                    color: Color(0xFF7F5AF0),
+                                  )
+                                  : null,
+                          onTap: () => Navigator.pop(ctx, path),
                         ),
-                        trailing:
-                            isCurrent
-                                ? const Icon(
-                                  Icons.check,
-                                  color: Color(0xFF7F5AF0),
-                                )
-                                : null,
-                        onTap: () => Navigator.pop(ctx, path),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-            ],
-          ),
-        );
-      },
-    );
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
+    } finally {
+      CanvasHtmlOverlayController.instance.resume();
+    }
     if (selected != null && selected.isNotEmpty && selected != current) {
       await ref.read(playgroundProvider).openCanvasFile(selected);
     }
@@ -2821,10 +2828,16 @@ class _VersionDropdown extends StatelessWidget {
         ),
       ),
       onOpened: () {
+        // Suspend iframe so popup interactions are not eaten by HtmlElementView
+        CanvasHtmlOverlayController.instance.suspend();
         final path = state.selectedCanvasPath;
         if (path != null && versions.isEmpty && !state.loadingVersions) {
           ref.read(playgroundProvider).fetchCanvasVersions(path);
         }
+      },
+      onCanceled: () {
+        // Resume iframe once popup closes without selection
+        CanvasHtmlOverlayController.instance.resume();
       },
       itemBuilder: (ctx) {
         if (state.loadingVersions) {
@@ -2897,31 +2910,36 @@ class _VersionDropdown extends StatelessWidget {
                     Navigator.of(ctx).pop();
                     final path = state.selectedCanvasPath;
                     if (path == null) return;
-                    final res = await ref
-                        .read(playgroundProvider)
-                        .readVersionAndLatest(path: path, versionNumber: ver);
-                    if (res == null) return;
-                    // Inline diff modal with Preview/Restore/Close
-                    // ignore: use_build_context_synchronously
-                    showModalBottomSheet(
-                      context: ctx,
-                      isScrollControlled: true,
-                      backgroundColor: const Color(0xFF0F1420),
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(16),
+                    try {
+                      CanvasHtmlOverlayController.instance.suspend();
+                      final res = await ref
+                          .read(playgroundProvider)
+                          .readVersionAndLatest(path: path, versionNumber: ver);
+                      if (res == null) return;
+                      // Inline diff modal with Preview/Restore/Close
+                      // ignore: use_build_context_synchronously
+                      await showModalBottomSheet(
+                        context: ctx,
+                        isScrollControlled: true,
+                        backgroundColor: const Color(0xFF0F1420),
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          ),
                         ),
-                      ),
-                      builder: (bctx) {
-                        return _InlineDiffModal(
-                          path: path,
-                          versionNumber: ver,
-                          oldContent: res['old']!,
-                          latestContent: res['latest']!,
-                          ref: ref,
-                        );
-                      },
-                    );
+                        builder: (bctx) {
+                          return _InlineDiffModal(
+                            path: path,
+                            versionNumber: ver,
+                            oldContent: res['old']!,
+                            latestContent: res['latest']!,
+                            ref: ref,
+                          );
+                        },
+                      );
+                    } finally {
+                      CanvasHtmlOverlayController.instance.resume();
+                    }
                   },
                   icon: const Icon(
                     Icons.add_circle_outline,
@@ -2942,9 +2960,15 @@ class _VersionDropdown extends StatelessWidget {
       onSelected: (ver) async {
         final path = state.selectedCanvasPath;
         if (path == null) return;
-        await ref
-            .read(playgroundProvider)
-            .enterCanvasVersionPreview(path: path, versionNumber: ver);
+        try {
+          // Keep suspended until preview loads to avoid accidental clicks
+          CanvasHtmlOverlayController.instance.suspend();
+          await ref
+              .read(playgroundProvider)
+              .enterCanvasVersionPreview(path: path, versionNumber: ver);
+        } finally {
+          CanvasHtmlOverlayController.instance.resume();
+        }
       },
     );
   }
