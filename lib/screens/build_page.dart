@@ -10,6 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:codemate/providers/tour_provider.dart';
+import 'package:codemate/components/help_tour_button.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 class BuildPage extends ConsumerStatefulWidget {
   const BuildPage({super.key});
@@ -19,6 +22,7 @@ class BuildPage extends ConsumerStatefulWidget {
 }
 
 class _BuildPageState extends ConsumerState<BuildPage> {
+  bool _showcaseStarted = false;
   @override
   void initState() {
     super.initState();
@@ -33,78 +37,102 @@ class _BuildPageState extends ConsumerState<BuildPage> {
 
   @override
   Widget build(BuildContext context) {
-    final projectsState = ref.watch(projectsProvider);
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF0D0E12),
-              Color(0xFF151821),
-              Color(0xFF1A1D29),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: Stack(
-          children: [
-            _buildBackgroundEffects(context),
-            Row(
+    final tour = ref.read(tourProvider);
+    return ShowCaseWidget(
+      builder: (showcaseContext) {
+        if (!_showcaseStarted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ShowCaseWidget.of(showcaseContext).startShowCase([          
+              tour.buildBrainstormKey,
+              tour.buildDescribeKey,
+              tour.buildIdeKey,
+              tour.buildTerminalKey,
+            
+            ]);
+          });
+          _showcaseStarted = true;
+        }
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFF0D0E12),
+                  Color(0xFF151821),
+                  Color(0xFF1A1D29),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                stops: [0.0, 0.5, 1.0],
+              ),
+            ),
+            child: Stack(
               children: [
-                PremiumSidebar(
-                  items: [
-                    PremiumSidebarItem(
-                      icon: Icons.home,
-                      label: 'Home',
-                      onTap: () => Navigator.of(context).pop(),
+                _buildBackgroundEffects(context),
+                Row(
+                  children: [
+                    PremiumSidebar(
+                      items: [
+                        PremiumSidebarItem(
+                          icon: Icons.home,
+                          label: 'Home',
+                          onTap: () => Navigator.of(context).pop(),
+                        ),
+                        PremiumSidebarItem(
+                          icon: Icons.play_arrow_rounded,
+                          label: 'Playground',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const PlaygroundPage()),
+                          ),
+                        ),
+                        PremiumSidebarItem(
+                          icon: Icons.construction_rounded,
+                          label: 'Build',
+                          onTap: () {},
+                          selected: true,
+                        ),
+                        PremiumSidebarItem(
+                          icon: Icons.school_rounded,
+                          label: 'Learn',
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const LearnPage()),
+                          ),
+                        ),
+                      ],
+                      topPadding: 12,
                     ),
-                    PremiumSidebarItem(
-                      icon: Icons.play_arrow_rounded,
-                      label: 'Playground',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const PlaygroundPage()),
-                      ),
-                    ),
-                    PremiumSidebarItem(
-                      icon: Icons.construction_rounded,
-                      label: 'Build',
-                      onTap: () {},
-                      selected: true,
-                    ),
-                    PremiumSidebarItem(
-                      icon: Icons.school_rounded,
-                      label: 'Learn',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LearnPage()),
+                    Expanded(
+                      child: SafeArea(
+                        child: ref.watch(projectsProvider).isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : ref.watch(projectsProvider).error != null
+                                ? Center(
+                                    child: Text(
+                                    'Error: ${ref.watch(projectsProvider).error}',
+                                    style: const TextStyle(color: Colors.redAccent),
+                                  ))
+                                : _buildTwoPanelLayout(ref.watch(projectsProvider).projects),
                       ),
                     ),
                   ],
-                  topPadding: 12,
-                ),
-                Expanded(
-                  child: SafeArea(
-                    child: projectsState.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : projectsState.error != null
-                            ? Center(
-                                child: Text(
-                                'Error: ${projectsState.error}',
-                                style: const TextStyle(color: Colors.redAccent),
-                              ))
-                            : _buildTwoPanelLayout(projectsState.projects),
-                  ),
                 ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+          // floatingActionButton: HelpTourButton(
+          //   tourKeys: [
+          //     tour.buildBrainstormKey,
+          //     tour.buildDescribeKey,
+          //     tour.buildIdeKey,
+          //     tour.buildTerminalKey,
+          //     tour.buildIntegrationKey,
+          //   ],
+          // ),
+        );
+      },
     );
   }
 

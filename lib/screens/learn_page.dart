@@ -1,6 +1,7 @@
 import 'package:codemate/providers/learn_provider.dart';
 import 'package:codemate/screens/browse_courses_page.dart';
 import 'package:codemate/screens/enrolled_course_page.dart';
+import 'package:codemate/widgets/app_showcase_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,120 +12,155 @@ import 'package:codemate/providers/user_provider.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
 import 'package:codemate/screens/playground_page.dart';
 import 'package:codemate/screens/build_page.dart';
+import 'package:codemate/providers/tour_provider.dart';
+import 'package:codemate/components/help_tour_button.dart';
+import 'package:showcaseview/showcaseview.dart';
 
-class LearnPage extends ConsumerWidget {
+class LearnPage extends ConsumerStatefulWidget {
   const LearnPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LearnPage> createState() => _LearnPageState();
+}
+
+class _LearnPageState extends ConsumerState<LearnPage> {
+  bool _showcaseStarted = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tour = ref.read(tourProvider);
     final enrolledCoursesAsync = ref.watch(enrolledCoursesDetailsProvider);
 
-    return PopScope(
-      canPop: false,
-      onPopInvoked: (didPop) async {
-        if (didPop) return;
-        final nav = Navigator.of(context);
-        final profile = await ref.read(userProfileProvider.future);
-        if (!context.mounted) return;
-        if (profile != null) {
-          nav.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
-            (route) => false,
-          );
-        } else {
-          nav.popUntil((route) => route.isFirst);
+    return ShowCaseWidget(
+      builder: (showcaseContext) {
+        if (!_showcaseStarted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ShowCaseWidget.of(showcaseContext).startShowCase([
+              
+              tour.learnEnrolledKey,
+              tour.learnProgressKey,
+              tour.learnCourseListKey,
+            ]);
+          });
+          _showcaseStarted = true;
         }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFF0F0F11),
-        body: SafeArea(
-          child: Stack(
-            children: [
-              // Pale background with subtle gradients
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(-0.8, -0.6),
-                    radius: 1.5,
-                    colors: [
-                      Color(0xFF1A1A1E),
-                      Color(0xFF141418),
-                      Color(0xFF0F0F11),
-                    ],
-                  ),
-                ),
-              ),
-              Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0.8, 0.6),
-                    radius: 1.2,
-                    colors: [
-                      Color(0xFF18181C),
-                      Color(0xFF141416),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-              // Main content
-              Row(
+        return PopScope(
+          canPop: false,
+          onPopInvoked: (didPop) async {
+            if (didPop) return;
+            final nav = Navigator.of(context);
+            final profile = await ref.read(userProfileProvider.future);
+            if (!context.mounted) return;
+            if (profile != null) {
+              nav.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
+                (route) => false,
+              );
+            } else {
+              nav.popUntil((route) => route.isFirst);
+            }
+          },
+          child: Scaffold(
+            backgroundColor: const Color(0xFF0F0F11),
+            body: SafeArea(
+              child: Stack(
                 children: [
-                  // Premium Sidebar
-                  PremiumSidebar(
-                    items: [
-                      PremiumSidebarItem(
-                        icon: Icons.home,
-                        label: 'Home',
-                        onTap: () async {
-                          final profile = await ref.read(userProfileProvider.future);
-                          if (!context.mounted) return;
-                          if (profile != null) {
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
-                              (route) => false,
-                            );
-                          }
-                        },
+                  // Pale background with subtle gradients
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(-0.8, -0.6),
+                        radius: 1.5,
+                        colors: [
+                          Color(0xFF1A1A1E),
+                          Color(0xFF141418),
+                          Color(0xFF0F0F11),
+                        ],
                       ),
-                      PremiumSidebarItem(
-                        icon: Icons.play_arrow_rounded,
-                        label: 'Playground',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaygroundPage()));
-                        },
+                    ),
+                  ),
+                  Container(
+                    decoration: const BoxDecoration(
+                      gradient: RadialGradient(
+                        center: Alignment(0.8, 0.6),
+                        radius: 1.2,
+                        colors: [
+                          Color(0xFF18181C),
+                          Color(0xFF141416),
+                          Colors.transparent,
+                        ],
                       ),
-                      PremiumSidebarItem(
-                        icon: Icons.construction_rounded,
-                        label: 'Build',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const BuildPage()));
-                        },
+                    ),
+                  ),
+                  // Main content
+                  Row(
+                    children: [
+                      // Premium Sidebar
+                      PremiumSidebar(
+                        items: [
+                          PremiumSidebarItem(
+                            icon: Icons.home,
+                            label: 'Home',
+                            onTap: () async {
+                              final profile = await ref.read(userProfileProvider.future);
+                              if (!context.mounted) return;
+                              if (profile != null) {
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => HomeScreen(profile: profile)),
+                                  (route) => false,
+                                );
+                              }
+                            },
+                          ),
+                          PremiumSidebarItem(
+                            icon: Icons.play_arrow_rounded,
+                            label: 'Playground',
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaygroundPage()));
+                            },
+                          ),
+                          PremiumSidebarItem(
+                            icon: Icons.construction_rounded,
+                            label: 'Build',
+                            onTap: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const BuildPage()));
+                            },
+                          ),
+                          PremiumSidebarItem(
+                            icon: Icons.school_rounded,
+                            label: 'Learn',
+                            onTap: () {},
+                            selected: true,
+                          ),
+                        ],
+                        topPadding: 12,
                       ),
-                      PremiumSidebarItem(
-                        icon: Icons.school_rounded,
-                        label: 'Learn',
-                        onTap: () {},
-                        selected: true,
+                      // Main content area
+                      Expanded(
+                        child: _buildTwoPanelLayout(context, ref, enrolledCoursesAsync),
                       ),
                     ],
-                    topPadding: 12,
-                  ),
-                  // Main content area
-                  Expanded(
-                    child: _buildTwoPanelLayout(context, ref, enrolledCoursesAsync),
                   ),
                 ],
               ),
-            ],
+            ),
+            floatingActionButton: HelpTourButton(
+              tourKeys: [
+                tour.learnCourseListKey,
+                tour.learnEnrolledKey,
+                tour.learnProgressKey,
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
   Widget _buildTwoPanelLayout(BuildContext context, WidgetRef ref, AsyncValue<List<EnrolledCourseDetails>> enrolledCoursesAsync) {
+        final tour = ref.read(tourProvider);
+
     return Row(
       children: [
         // Left panel - Header and Stats
@@ -170,7 +206,13 @@ class LearnPage extends ConsumerWidget {
                 const SizedBox(height: 20),
                 _buildLeftPanelHeader(),
                 const SizedBox(height: 32),
-                _buildBrowseCoursesButton(context),
+                     Showcase.withWidget(
+            key: tour.learnCourseListKey,
+            container: AppShowcaseWidget(
+              title: 'Browse Languages and Frameworks',
+              description: 'Click here to enroll in a course. Multiple Languages and Frameworks from Beginner to Advanced programmers',
+            ),
+          height: 150, width: 250,child: _buildBrowseCoursesButton(context),),
                 const SizedBox(height: 40),
                 // Stats section header
                 Text(
@@ -182,7 +224,13 @@ class LearnPage extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-                _buildStatsCards(ref, enrolledCoursesAsync),
+                  Showcase.withWidget(
+            key: tour.learnProgressKey,
+            container: AppShowcaseWidget(
+              title: 'Progress Overview',
+              description: 'Once you have enrolled in a course you can easily view your overall stats and progress from here',
+            ),
+          height: 150, width: 250,child: _buildStatsCards(ref, enrolledCoursesAsync)),
                 const Spacer(),
               ],
             ),
@@ -196,92 +244,100 @@ class LearnPage extends ConsumerWidget {
         // Right panel - Enrolled courses
         Expanded(
           flex: 1,
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Your Learning Journey',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Continue where you left off',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: Colors.white60,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Expanded(
-                  child: enrolledCoursesAsync.when(
-                    loading: () => Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: const [
-                          BigShimmer(width: 260, height: 14),
-                          SizedBox(height: 12),
-                          BigShimmer(width: 220, height: 14),
-                          SizedBox(height: 12),
-                          BigShimmer(width: 240, height: 14),
-                        ],
-                      ),
+          child: Showcase.withWidget(
+            key: tour.learnEnrolledKey,
+            container: AppShowcaseWidget(
+              title: 'Enrolled Courses',
+              description: 'Once you have enrolled in a course you can easily access and continue them from here',
+            ),
+          height: 150, width: 250,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Your Learning Journey',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
-                    error: (err, stack) => Center(
-                      child: Text(
-                        'Error loading courses: $err',
-                        style: GoogleFonts.poppins(color: Colors.red.shade300),
-                      ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Continue where you left off',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.white60,
                     ),
-                    data: (enrolledCourses) {
-                      if (enrolledCourses.isEmpty) {
-                        return Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.school_outlined,
-                                size: 48,
-                                color: Colors.white.withOpacity(0.3),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No courses enrolled yet',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
-                                  color: Colors.white70,
+                  ),
+                  const SizedBox(height: 24),
+                  Expanded(
+                    child: enrolledCoursesAsync.when(
+                      loading: () => Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: const [
+                            BigShimmer(width: 260, height: 14),
+                            SizedBox(height: 12),
+                            BigShimmer(width: 220, height: 14),
+                            SizedBox(height: 12),
+                            BigShimmer(width: 240, height: 14),
+                          ],
+                        ),
+                      ),
+                      error: (err, stack) => Center(
+                        child: Text(
+                          'Error loading courses: $err',
+                          style: GoogleFonts.poppins(color: Colors.red.shade300),
+                        ),
+                      ),
+                      data: (enrolledCourses) {
+                        if (enrolledCourses.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.school_outlined,
+                                  size: 48,
+                                  color: Colors.white.withOpacity(0.3),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Start your learning journey today',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  color: Colors.white.withOpacity(0.5),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No courses enrolled yet',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white70,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Start your learning journey today',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    color: Colors.white.withOpacity(0.5),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+                        return ListView.separated(
+                          itemCount: enrolledCourses.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 16),
+                          itemBuilder: (context, index) {
+                            final details = enrolledCourses[index];
+                            return EnrolledCourseCard(details: details);
+                          },
                         );
-                      }
-                      return ListView.separated(
-                        itemCount: enrolledCourses.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 16),
-                        itemBuilder: (context, index) {
-                          final details = enrolledCourses[index];
-                          return EnrolledCourseCard(details: details);
-                        },
-                      );
-                    },
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

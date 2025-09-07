@@ -9,6 +9,8 @@ import 'package:codemate/providers/user_provider.dart';
 import 'package:codemate/screens/build_page.dart';
 import 'package:codemate/screens/playground_page.dart';
 import 'package:codemate/screens/learn_page.dart';
+import 'package:codemate/widgets/app_showcase_widget.dart';
+import 'package:codemate/widgets/tutorial_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -18,6 +20,7 @@ import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/providers/playground_provider.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
 import 'package:showcaseview/showcaseview.dart';
+import 'package:codemate/providers/tour_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -30,11 +33,10 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  final GlobalKey _buildButtonKey = GlobalKey();
-  final GlobalKey _playgroundButtonKey = GlobalKey();
-  final GlobalKey _learnButtonKey = GlobalKey();
-  final GlobalKey _sidebarKey = GlobalKey();
   bool _showcaseStarted = false;
+  String? _cachedGreeting;
+  String? _cachedSecondaryGreeting;
+  DateTime? _lastGreetingUpdate;
 
   @override
   void initState() {
@@ -47,28 +49,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   String _getGreeting() {
-    final hour = DateTime.now().hour;
-    const greetings = {
-      'morning': ['Good morning,', 'Rise and shine,', 'A new day awaits,'],
-      'afternoon': [
-        'Good afternoon,',
-        "Hope you're having a great day,",
-        'Keep up the great work,',
-      ],
-      'evening': ['Good evening,', 'Time to wind down,', 'The night is young,'],
-    };
-    final key = hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
-    return greetings[key]![Random().nextInt(greetings[key]!.length)];
+    final now = DateTime.now();
+    
+    // Check if we need to update the greeting (every 6 hours)
+    if (_lastGreetingUpdate == null || 
+        now.difference(_lastGreetingUpdate!).inHours >= 6) {
+      final hour = now.hour;
+      const greetings = {
+        'morning': ['Good morning,', 'Rise and shine,', 'A new day awaits,'],
+        'afternoon': [
+          'Good afternoon,',
+          "Hope you're having a great day,",
+          'Keep up the great work,',
+        ],
+        'evening': ['Good evening,', 'Time to wind down,', 'The night is young,'],
+      };
+      final key = hour < 12 ? 'morning' : (hour < 17 ? 'afternoon' : 'evening');
+      _cachedGreeting = greetings[key]![Random().nextInt(greetings[key]!.length)];
+      _lastGreetingUpdate = now;
+    }
+    
+    return _cachedGreeting ?? 'Hello,'; // Fallback if somehow null
   }
 
   String _getSecondaryGreeting() {
-    const options = [
-      "What will you work on today?",
-      "Ready to build something amazing?",
-      "Let's make some magic happen.",
-      "Time to dive into some code.",
-    ];
-    return options[Random().nextInt(options.length)];
+    final now = DateTime.now();
+    
+    // Check if we need to update the secondary greeting (every 6 hours)
+    if (_lastGreetingUpdate == null || 
+        now.difference(_lastGreetingUpdate!).inHours >= 6) {
+      const options = [
+        "What will you work on today?",
+        "Ready to build something amazing?",
+        "Let's make some magic happen.",
+        "Time to dive into some code.",
+      ];
+      _cachedSecondaryGreeting = options[Random().nextInt(options.length)];
+    }
+    
+    return _cachedSecondaryGreeting ?? "What will you work on today?"; // Fallback if somehow null
   }
 
   String _getInitials(String fullName) {
@@ -84,22 +103,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return initials.toUpperCase();
   }
 
+
   @override
   Widget build(BuildContext context) {
     final initials = _getInitials(widget.profile.fullName);
     final projectsCount = ref.watch(projectsProvider).projects.length;
     final coursesCount = ref.watch(coursesProvider).enrolledCoursesCount;
+    final tour = ref.read(tourProvider);
 
     return ShowCaseWidget(
-      builder: (showcaseContext) {
-        if (!_showcaseStarted) {
+    
+        builder: (showcaseContext) {
+          // Use addPostFrameCallback here instead of initState
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            ShowCaseWidget.of(
-              showcaseContext,
-            ).startShowCase([_buildButtonKey, _learnButtonKey]);
+            if (!_showcaseStarted) {
+              showOnboardingDialog(context, () {
+                // ✅ use showcaseContext, not outer context
+                ShowCaseWidget.of(showcaseContext).startShowCase([
+                  tour.homeBuildCtaKey,
+                  tour.homeLearnCtaKey,
+                  tour.homePlaygroundCtaKey,
+                  tour.homeSidebarKey,
+                ]);
+              });
+              _showcaseStarted = true;
+            }
           });
-          _showcaseStarted = true;
-        }
+
         return Scaffold(
           backgroundColor: Colors.transparent,
           body: Container(
@@ -136,6 +166,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ),
                         );
                       },
+
                     ),
                     PremiumSidebarItem(
                       icon: Icons.construction_rounded,
@@ -159,6 +190,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ],
                   topPadding: 20,
+                  navKey: tour.homeSidebarKey,
+                  settingsKey: tour.sidebarSettingsKey,
                 ),
                 Expanded(
                   child: Stack(
@@ -200,7 +233,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                                 ).size.width *
                                                 0.3,
                                           ),
-                                          child: _HomeInputBar(),
+                                          child: Showcase.withWidget(key: tour.homePlaygroundCtaKey, container: AppShowcaseWidget(title: 'Input Bar', description: 'Input your code here'), height: 150, width: 250, child: _HomeInputBar()),
                                         ),
                                       ),
                                     ],
@@ -217,9 +250,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-        );
-      },
-    );
+          // floatingActionButton: HelpTourButton(
+          //   tourKeys: [tour.homeSidebarKey, tour.homeBuildCtaKey, tour.homeLearnCtaKey, tour.homePlaygroundCtaKey],
+          // ),
+          );
+        },
+      );
+    
+  
   }
 
   Widget _buildGlowEffect(BuildContext context) {
@@ -396,15 +434,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     int projectsCount,
     int coursesCount,
   ) {
+     final tour = ref.read(tourProvider);
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Showcase(
-          key: _buildButtonKey,
-          title: 'Build',
-          titleTextAlign: TextAlign.center,
-          descriptionTextAlign: TextAlign.center,
-          description: 'Start a new project with AI assistance',
+        Showcase.withWidget(
+          key: tour.homeBuildCtaKey,
+          container: AppShowcaseWidget(title: 'Build', description: 'Start a new project with AI assistance'),
+          height: 150,
+          width: 250,
           child: _buildActionButton(
             context,
             icon: Icons.construction_rounded,
@@ -420,12 +458,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         const SizedBox(width: 30),
-        Showcase(
-          key: _learnButtonKey,
-          title: 'Learn',
-          titleTextAlign: TextAlign.center,
-          descriptionTextAlign: TextAlign.center,
-          description: 'Explore guided learning paths and courses',
+        Showcase.withWidget(
+          key: tour.homeLearnCtaKey,
+           container: AppShowcaseWidget(
+            title: 'Learn',
+            description: 'Explore guided learning paths and courses',
+          ),
+          height: 150,
+          width: 250,
           child: _buildActionButton(
             context,
             icon: Icons.school_rounded,

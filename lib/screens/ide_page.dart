@@ -4,10 +4,13 @@ import 'package:codemate/components/ide/agent_chat_view.dart';
 import 'package:codemate/components/ide/code_editor_view.dart';
 import 'package:codemate/components/ide/file_tree_view.dart';
 import 'package:codemate/providers/project_files_provider.dart';
+import 'package:codemate/providers/tour_provider.dart';
+import 'package:codemate/widgets/app_showcase_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:multi_split_view/multi_split_view.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:codemate/components/ide/terminal_view.dart';
 import 'package:codemate/themes/colors.dart';
@@ -170,9 +173,23 @@ class _IdePageState extends ConsumerState<IdePage> {
       transitionDuration: const Duration(milliseconds: 160),
     );
   }
-
+  bool _showcaseStarted = false;
   @override
   Widget build(BuildContext context) {
+  final tour = ref.read(tourProvider);
+       return ShowCaseWidget(
+      builder: (showcaseContext) {
+        if (!_showcaseStarted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ShowCaseWidget.of(showcaseContext).startShowCase([          
+    tour.buildExplorerKey,
+              tour.buildIdeKey,
+              tour.buildAgentKey,
+              tour.buildTerminalKey,
+            ]);
+          });
+          _showcaseStarted = true;
+        }
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -223,14 +240,19 @@ class _IdePageState extends ConsumerState<IdePage> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
-          TextButton.icon(
-            onPressed: _openTerminalModal,
-            icon: const Icon(Icons.terminal_outlined, size: 18),
-            label: const Text('Terminal'),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          Showcase.withWidget(
+            height: 150, width: 250,
+            container: AppShowcaseWidget(title: 'Terminal', description: 'This is your integrated terminal — you can run commands and interact with your project here.'),
+            key: tour.buildTerminalKey,
+            child: TextButton.icon(
+              onPressed: _openTerminalModal,
+              icon: const Icon(Icons.terminal_outlined, size: 18),
+              label: const Text('Terminal'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white70,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -256,24 +278,42 @@ class _IdePageState extends ConsumerState<IdePage> {
                     icon: const Icon(Icons.refresh, size: 20, color: Colors.white70),
                     onPressed: () => ref.invalidate(projectFilesProvider(widget.projectId)),
                   ),
-                  child: FileTreeView(projectId: widget.projectId),
+                  child: Showcase.withWidget(
+                    key: tour.buildExplorerKey,
+                    height: 150,
+                    width: 250,
+                    container: AppShowcaseWidget(title: "Explorer", description: "Use the file explorer to navigate your project structure, open files, and stay organized while working."),
+
+                    child: FileTreeView(projectId: widget.projectId)),
                 );
               case 1:
-                return const _PaneContainer(
+                return _PaneContainer(
                   title: 'Editor',
-                  child: CodeEditorView(),
+                  child: Showcase.withWidget(
+                     key: tour.buildIdeKey,
+                    height: 150,
+                    width: 250,
+                    container: const AppShowcaseWidget(title: "Editor", description: "The code editor is where you learn, create, modify, and refine your code. It’s your main workspace."),
+
+                    child: const CodeEditorView()),
                 );
               case 2:
                 // The AgentChatView gets its own container without a title bar
-                return ClipRRect(
+
+                return 
+                Showcase.withWidget(
+                          key: tour.buildAgentKey,
+                    height: 150,
+                    width: 250,
+                    container: const AppShowcaseWidget(title: "Robin", description: "Robin is your AI assistant — always ready to generate code, explain concepts, and boost your productivity."),
+                      child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     decoration: BoxDecoration(
                       color: const Color(0xFF0F0F0F),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.08)),
-                    ),
-                    child: AgentChatView(projectId: widget.projectId),
+                      border: Border.all(color: Colors.white.withOpacity(0.08)),),
+                  child: AgentChatView(projectId: widget.projectId)),
                   ),
                 );
               default:
@@ -284,6 +324,8 @@ class _IdePageState extends ConsumerState<IdePage> {
       ),
     );
   }
+       );
+}
 }
 
 class _PaneContainer extends StatelessWidget {

@@ -1,10 +1,11 @@
+import 'package:codemate/widgets/app_showcase_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:codemate/providers/auth_provider.dart';
-import 'package:codemate/providers/user_provider.dart';
 import 'package:codemate/components/settings_profile_modal.dart';
+import 'package:showcaseview/showcaseview.dart';
 
 class PremiumSidebarItem {
   final IconData icon;
@@ -27,6 +28,9 @@ class PremiumSidebar extends ConsumerStatefulWidget {
   final double topPadding;
   // Optional middle content (e.g., Playground history panel)
   final Widget? middle;
+  final GlobalKey? navKey;
+  final GlobalKey? settingsKey;
+  final GlobalKey? profileKey;
 
   const PremiumSidebar({
     super.key,
@@ -35,6 +39,9 @@ class PremiumSidebar extends ConsumerStatefulWidget {
     this.expandedWidth = 240,
     this.topPadding = 16,
     this.middle,
+    this.navKey,
+    this.settingsKey,
+    this.profileKey,
   });
 
   @override
@@ -120,7 +127,7 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
         );
       },
     );
-    Overlay.of(context)?.insert(overlay);
+    Overlay.of(context).insert(overlay);
     _overlay = overlay;
     _controller.forward(from: 0);
   }
@@ -173,7 +180,42 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
               // App icon with enhanced styling
               InkWell(
                 onTap: () => _showOverlay(),
-                child: Container(
+                child: widget.navKey != null ? Showcase.withWidget(
+                  key: widget.navKey!,
+                  container: AppShowcaseWidget(title: 'Sidebar', description: 'Click here to expand the sidebar. You can access all main sections from here.'),
+                  height: 150,
+                  width: 250,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.accent.withOpacity(0.8),
+                          AppColors.accent.withOpacity(0.4),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.accent.withOpacity(0.3),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accent.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  ),
+                ) : Container(
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
@@ -213,7 +255,7 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
                   itemBuilder: (context, index) {
                     final item = widget.items[index];
                     final selected = item.selected;
-                    return Container(
+                    Widget navIcon = Container(
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       child: Tooltip(
                         message: item.label,
@@ -248,11 +290,25 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
                         ),
                       ),
                     );
+                    // Only wrap the first nav item (main navigation) in Showcase
+                    if (index == 0 && widget.navKey != null) {
+                      navIcon = navIcon;
+                    }
+                    return navIcon;
                   },
                 ),
               ),
               const SizedBox(height: 10),
-              _buildUserProfile(),
+              // Settings/Profile button
+              if (widget.settingsKey != null)
+                Showcase(
+                  key: widget.settingsKey!,
+                  title: 'Settings',
+                  description: 'Customize your experience and preferences.',
+                  child: _buildUserProfile(),
+                )
+              else
+                _buildUserProfile(),
               const SizedBox(height: 16),
             ],
           ),

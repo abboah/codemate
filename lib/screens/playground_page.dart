@@ -1,7 +1,9 @@
 import 'dart:ui';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:codemate/screens/home_screen.dart';
 import 'package:codemate/themes/colors.dart';
+import 'package:codemate/widgets/app_showcase_widget.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +29,16 @@ import 'package:codemate/utils/download_helper.dart' as download_helper;
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:codemate/components/ide/diff_preview.dart';
 import 'package:codemate/components/ide/diff_side_by_side.dart';
+import 'package:codemate/providers/tour_provider.dart';
+import 'package:codemate/components/help_tour_button.dart';
+import 'package:showcaseview/showcaseview.dart';
+
+// Global keys for each showcase step
+final GlobalKey _inputKey = GlobalKey();
+final GlobalKey _artifactsKey = GlobalKey();
+final GlobalKey _canvasKey = GlobalKey();
+final GlobalKey _canvasTabsKey = GlobalKey();
+final GlobalKey _newChatKey = GlobalKey();
 
 class PlaygroundPage extends ConsumerStatefulWidget {
   const PlaygroundPage({super.key});
@@ -37,6 +49,14 @@ class PlaygroundPage extends ConsumerStatefulWidget {
 
 class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   final TextEditingController _controller = TextEditingController();
+    bool _showArtifactsButton = false;
+  bool _canvasOpened = false;
+  bool _codeTabSelected = true;
+  bool _previewTabSelected = false;
+  bool _tourInProgress = false;
+  bool _inputAutoFilled = false;
+  bool _artifactsViewed = false;
+  bool _bothTabsInteracted = false;
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
   bool _uploading =
@@ -57,6 +77,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   static const double _minPaneRatio = 0.2; // 20%
   static const double _maxPaneRatio = 0.8; // 80%
   bool _canvasFullscreen = false;
+  bool _showcaseStarted = false;
 
   @override
   void initState() {
@@ -665,6 +686,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   }
 
   void _showArtifactPreview(int index) {
+    final tour = ref.read(tourProvider);
     final state = ref.read(playgroundProvider);
     if (state.artifacts.isEmpty) return;
     _artifactPreviewIndex = index.clamp(0, state.artifacts.length - 1);
@@ -756,7 +778,16 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                             ),
                             IconButton(
                               tooltip: 'Close',
-                              onPressed: () => Navigator.of(ctx).pop(),
+                              onPressed: (){  
+                                Navigator.of(ctx).pop();
+                                // After closing dialog, continue the tour
+                                // After closing, resume showcase at the Canvas step
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   ShowCaseWidget.of(context).startShowCase([
+    //     tour.canvasKey,
+    //   ]);
+    // });
+    },
                               icon: const Icon(
                                 Icons.close,
                                 color: Colors.white70,
@@ -786,6 +817,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
         );
       },
     );
+
   }
 
   String _formatCanvasTitle(String raw) {
@@ -840,6 +872,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
 
   @override
   Widget build(BuildContext context) {
+    final tour = ref.read(tourProvider);
     final state = ref.watch(playgroundProvider);
     // Reset view mode when the selected canvas file changes
     if (state.selectedCanvasPath != _lastCanvasPath) {
@@ -849,238 +882,246 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     final hasMessages = state.messages.isNotEmpty;
     final titleText =
         state.chatTitle?.isNotEmpty == true ? state.chatTitle! : 'Playground';
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: const Color(0xFF121216),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(56),
-        child: Container(
-          // Let sidebar overlay over the AppBar area
-          color: Colors.transparent,
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0, // Prevent color change on scroll
-            // Reserve space for the collapsed sidebar (70px) so AppBar content shifts right
-            automaticallyImplyLeading: false,
-            leadingWidth: 70 + 48, // collapsed sidebar width + icon space
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 70),
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            titleSpacing: 16,
-            title: Text(
-              titleText,
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            actions: [
-              if (state.artifacts.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: InkWell(
-                      onTap: () => _showArtifactPreview(0),
-                      borderRadius: BorderRadius.circular(999),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0,
-                          vertical: 8.0,
+    return ShowCaseWidget(
+      builder: (showcaseContext) {
+        if (!_showcaseStarted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _tourInProgress = true;
+        });
+    ShowCaseWidget.of(showcaseContext).startShowCase([
+      tour.inputKey,
+      tour.artifactsKey,
+      tour.canvasKey,
+      tour.newChatKey,
+    ]);
+    _showcaseStarted = true;
+  }
+});
+        }
+        return Scaffold(
+          extendBodyBehindAppBar: true,
+          backgroundColor: const Color(0xFF121216),
+          appBar: PreferredSize(
+            preferredSize: const Size.fromHeight(56),
+            child: Container(
+              color: Colors.transparent,
+              child: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                automaticallyImplyLeading: false,
+                leadingWidth: 70 + 48,
+                leading: Padding(
+                  padding: const EdgeInsets.only(left: 70),
+                  child: IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+                titleSpacing: 16,
+                title: Text(
+                  titleText,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                actions: [
+               if (state.artifacts.isNotEmpty)
+  Showcase.withWidget(
+    key: tour.artifactsKey,
+    height: 150,
+    width: 250,
+    container: const AppShowcaseWidget(
+      title: 'Artifacts',
+      description: 'Great work 🎉! Your project generated some artifacts. Click here to explore them.',
+    ),
+
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.inventory_2_outlined,
-                              color: Colors.white70,
-                              size: 16,
+                        child: InkWell(
+                         // onTap: () => _showArtifactPreview(0),
+                         onTap: () {
+  // Stop the showcase so it doesn't stay visible
+  ShowCaseWidget.of(context).dismiss();
+
+  // Open your artifacts dialog
+  _showArtifactPreview(0);
+
+ 
+
+},
+
+                          borderRadius: BorderRadius.circular(999),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0,
+                              vertical: 8.0,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Artifacts',
-                              style: GoogleFonts.poppins(color: Colors.white),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.inventory_2_outlined,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Artifacts',
+                                  style: GoogleFonts.poppins(color: Colors.white),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              if (state.canvasFiles.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: InkWell(
-                      onTap: _openMostRecentCanvas,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12.0,
-                          vertical: 8.0,
+                    ),),
+                 if (state.canvasFiles.isNotEmpty)
+  Showcase.withWidget(
+    key: tour.canvasKey,
+    height: 150,
+    width: 250,
+    container: const AppShowcaseWidget(
+      title: 'Canvas',
+            description: 'Now here\'s the Canvas — this is where you can interact with your project visually.',
+    ),
+    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8.0),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white.withOpacity(0.12)),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.brush,
-                              color: Colors.white70,
-                              size: 16,
+                        child: InkWell(
+                          onTap: _openMostRecentCanvas,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12.0,
+                              vertical: 8.0,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Canvas',
-                              style: GoogleFonts.poppins(color: Colors.white),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.brush,
+                                  color: Colors.white70,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Canvas',
+                                  style: GoogleFonts.poppins(color: Colors.white),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
+                    ),),
+                    Showcase.withWidget(
+  key: tour.newChatKey,
+  height: 150, width: 250,
+  container: const AppShowcaseWidget(
+    title: 'New Chat',
+            description: 'Awesome! You\'ve completed the quick tour. You can always start fresh by clicking New Chat here.',
+  ),child: 
+                  IconButton(
+                    tooltip: 'New chat',
+                    onPressed: () => ref.read(playgroundProvider).newChat(),
+                    icon: const Icon(Icons.edit, color: Colors.white),
+                  ),),
+                  if (state.streaming)
+                    const Padding(
+                      padding: EdgeInsets.only(right: 12.0),
+                      child: Center(child: MiniWave(size: 20)),
                     ),
-                  ),
-                ),
-              IconButton(
-                tooltip: 'New chat',
-                onPressed: () => ref.read(playgroundProvider).newChat(),
-                icon: const Icon(Icons.edit, color: Colors.white),
+                ],
               ),
-              if (state.streaming)
-                const Padding(
-                  padding: EdgeInsets.only(right: 12.0),
-                  child: Center(child: MiniWave(size: 20)),
-                ),
-            ],
+            ),
           ),
-        ),
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0A0A0D), Color(0xFF121216), Color(0xFF1A1A20)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            stops: [0.0, 0.5, 1.0],
-            transform: GradientRotation(2.356),
-          ),
-        ),
-        child: TweenAnimationBuilder<double>(
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-          tween: Tween(begin: 0.0, end: 1.0),
-          builder:
-              (context, t, child) => Opacity(
-                opacity: t,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - t) * 8),
-                  child: child,
-                ),
+          body: TweenAnimationBuilder<double>(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            tween: Tween(begin: 0.0, end: 1.0),
+            builder: (context, t, child) => Opacity(
+              opacity: t,
+              child: Transform.translate(
+                offset: Offset(0, (1 - t) * 8),
+                child: child,
               ),
-          child: Row(
-            children: [
-              PremiumSidebar(
-                items: [
-                  PremiumSidebarItem(
-                    icon: Icons.home,
-                    label: 'Home',
-                    onTap: () => Navigator.of(context).pop(),
-                    selected: false,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.play_arrow_rounded,
-                    label: 'Playground',
-                    onTap: () {},
-                    selected: true,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.construction_rounded,
-                    label: 'Build',
-                    onTap:
-                        () => Navigator.push(
+            ),
+            child: Row(
+              children: [
+                PremiumSidebar(
+                  items: [
+                    PremiumSidebarItem(
+                      icon: Icons.home,
+                      label: 'Home',
+                     onTap: () => Navigator.of(context).pop(),
+                      selected: false,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Playground',
+                      onTap: () {},
+                      selected: true,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.construction_rounded,
+                      label: 'Build',
+                      onTap: () {
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(builder: (_) => const BuildPage()),
-                        ),
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.school_rounded,
-                    label: 'Learn',
-                    onTap:
-                        () => Navigator.push(
+                        );
+                      },
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.school_rounded,
+                      label: 'Learn',
+                      onTap: () {
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(builder: (_) => const LearnPage()),
-                        ),
-                  ),
-                ],
-                topPadding: 16,
-                middle: _PlaygroundHistoryPanel(ref: ref),
-              ),
-              // Only the main content area is pushed below the AppBar; the sidebar touches the very top
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 56),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final showCanvas =
-                          ref.watch(playgroundProvider).selectedCanvasPath !=
-                          null;
-                      if (!showCanvas) {
-                        return Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: Stack(
-                                children: [
-                                  _buildGlow(),
-                                  AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 280),
-                                    switchInCurve: Curves.easeOutCubic,
-                                    switchOutCurve: Curves.easeInCubic,
-                                    child:
-                                        !hasMessages
-                                            ? _buildLanding(context)
-                                            : _buildConversation(context),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
                         );
-                      }
-
-                      // With canvas open: sized panes with draggable separator
-                      const grabberW = 8.0;
-                      final totalW = constraints.maxWidth;
-                      final contentW = (totalW - grabberW).clamp(0.0, totalW);
-                      final leftW = (contentW * _splitRatio).clamp(
-                        contentW * _minPaneRatio,
-                        contentW * _maxPaneRatio,
-                      );
-                      final rightW = contentW - leftW;
-                      return Stack(
-                        children: [
-                          Row(
+                      },
+                    ),
+                  ],
+                  topPadding: 16,
+                  middle: _PlaygroundHistoryPanel(ref: ref),
+                  // navKey: tour.playgroundCanvasKey,
+                  settingsKey: tour.sidebarSettingsKey,
+                ),
+                // Only the main content area is pushed below the AppBar; the sidebar touches the very top
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 56),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final showCanvas =
+                            ref.watch(playgroundProvider).selectedCanvasPath !=
+                            null;
+                        if (!showCanvas) {
+                          return Row(
                             children: [
-                              SizedBox(
-                                width: leftW,
+                              Expanded(
+                                flex: 2,
                                 child: Stack(
                                   children: [
                                     _buildGlow(),
                                     AnimatedSwitcher(
-                                      duration: const Duration(
-                                        milliseconds: 280,
-                                      ),
+                                      duration: const Duration(milliseconds: 280),
                                       switchInCurve: Curves.easeOutCubic,
                                       switchOutCurve: Curves.easeInCubic,
                                       child:
@@ -1091,93 +1132,437 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                   ],
                                 ),
                               ),
-                              // Grabber
-                              MouseRegion(
-                                cursor: SystemMouseCursors.resizeColumn,
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.translucent,
-                                  onHorizontalDragUpdate: (details) {
-                                    final newLeft = (leftW + details.delta.dx)
-                                        .clamp(
-                                          contentW * _minPaneRatio,
-                                          contentW * _maxPaneRatio,
-                                        );
-                                    setState(() {
-                                      _splitRatio =
-                                          (contentW <= 0)
-                                              ? 0.5
-                                              : (newLeft / contentW);
-                                    });
-                                  },
-                                  child: Container(
-                                    width: grabberW,
-                                    height: double.infinity,
-                                    color: Colors.white.withOpacity(0.02),
-                                    child: Center(
-                                      child: Container(
-                                        width: 2,
-                                        height: 56,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.15),
-                                          borderRadius: BorderRadius.circular(
-                                            2,
+                            ],
+                          );
+                        }
+
+                        // With canvas open: sized panes with draggable separator
+                        const grabberW = 8.0;
+                        final totalW = constraints.maxWidth;
+                        final contentW = (totalW - grabberW).clamp(0.0, totalW);
+                        final leftW = (contentW * _splitRatio).clamp(
+                          contentW * _minPaneRatio,
+                          contentW * _maxPaneRatio,
+                        );
+                        final rightW = contentW - leftW;
+                        return Stack(
+                          children: [
+                            Row(
+                              children: [
+                                SizedBox(
+                                  width: leftW,
+                                  child: Stack(
+                                    children: [
+                                      _buildGlow(),
+                                      AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 280,
+                                        ),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        child:
+                                            !hasMessages
+                                                ? _buildLanding(context)
+                                                : _buildConversation(context),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // Grabber
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.resizeColumn,
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.translucent,
+                                    onHorizontalDragUpdate: (details) {
+                                      final newLeft = (leftW + details.delta.dx)
+                                          .clamp(
+                                            contentW * _minPaneRatio,
+                                            contentW * _maxPaneRatio,
+                                          );
+                                      setState(() {
+                                        _splitRatio =
+                                            (contentW <= 0)
+                                                ? 0.5
+                                                : (newLeft / contentW);
+                                      });
+                                    },
+                                    child: Container(
+                                      width: grabberW,
+                                      height: double.infinity,
+                                      color: Colors.white.withOpacity(0.02),
+                                      child: Center(
+                                        child: Container(
+                                          width: 2,
+                                          height: 56,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(
+                                              2,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              // Canvas pane
-                              TweenAnimationBuilder<double>(
-                                duration: const Duration(milliseconds: 400),
-                                curve: Curves.easeOutCubic,
-                                tween: Tween(begin: 0.0, end: 1.0),
-                                builder:
-                                    (context, t, child) => Transform.translate(
-                                      offset: Offset((1 - t) * 100, 0),
-                                      child: Opacity(opacity: t, child: child),
-                                    ),
-                                child: SizedBox(
-                                  width: rightW,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFF1A1D29),
-                                          Color(0xFF151824),
-                                          Color(0xFF111320),
+                                // Canvas pane
+                                TweenAnimationBuilder<double>(
+                                  duration: const Duration(milliseconds: 400),
+                                  curve: Curves.easeOutCubic,
+                                  tween: Tween(begin: 0.0, end: 1.0),
+                                  builder:
+                                      (context, t, child) => Transform.translate(
+                                    offset: Offset((1 - t) * 100, 0),
+                                    child: Opacity(opacity: t, child: child),
+                                  ),
+                                  child: SizedBox(
+                                    width: rightW,
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFF1A1D29),
+                                            Color(0xFF151824),
+                                            Color(0xFF111320),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: Colors.white.withOpacity(0.12),
+                                          ),
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.3),
+                                            blurRadius: 8,
+                                            offset: const Offset(-2, 0),
+                                          ),
                                         ],
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
                                       ),
-                                      border: Border(
-                                        left: BorderSide(
-                                          color: Colors.white.withOpacity(0.12),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Header
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 12,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(
+                                                0.03,
+                                              ),
+                                              border: Border(
+                                                bottom: BorderSide(
+                                                  color: Colors.white.withOpacity(
+                                                    0.08,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            child: LayoutBuilder(
+                                              builder: (context, head) {
+                                                final compact =
+                                                    head.maxWidth < 480;
+                                                final ultra = head.maxWidth < 360;
+                                                final state = ref.watch(
+                                                  playgroundProvider,
+                                                );
+                                                final currentPath =
+                                                    state.selectedCanvasPath ??
+                                                    '';
+                                                final desc =
+                                                    (state.selectedCanvasMeta?['description']
+                                                            as String?)
+                                                        ?.trim();
+                                                final currentLabel =
+                                                    (desc != null &&
+                                                            desc.isNotEmpty)
+                                                        ? desc
+                                                        : (currentPath
+                                                                .split('/')
+                                                                .isNotEmpty
+                                                            ? currentPath
+                                                                .split('/')
+                                                                .last
+                                                            : currentPath);
+                                                return Row(
+                                                  children: [
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.all(6),
+                                                      decoration: BoxDecoration(
+                                                        gradient:
+                                                            const LinearGradient(
+                                                              colors: [
+                                                                Color(0xFF7F5AF0),
+                                                                Color(0xFF9D4EDD),
+                                                              ],
+                                                            ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              6,
+                                                            ),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: const Color(
+                                                                0xFF7F5AF0,
+                                                            ).withOpacity(0.3),
+                                                            blurRadius: 4,
+                                                            offset: const Offset(
+                                                              0,
+                                                              1,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons.code,
+                                                        color: Colors.white,
+                                                        size: 16,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    if (!compact) 
+                                                      Expanded(
+                                                        child: InkWell(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                6,
+                                                              ),
+                                                          onTap: () async {
+                                                            await _showFileSwitcherMenu(
+                                                              context,
+                                                              ref,
+                                                            );
+                                                          },
+                                                          child: Padding(
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  vertical: 2,
+                                                                  horizontal: 4,
+                                                                ),
+                                                            child: Row(
+                                                              children: [
+                                                                Expanded(
+                                                                  child: Column(
+                                                                    crossAxisAlignment:
+                                                                        CrossAxisAlignment
+                                                                            .start,
+                                                                    mainAxisSize:
+                                                                        MainAxisSize
+                                                                            .min,
+                                                                    children: [
+                                                                      Text(
+                                                                        'Canvas',
+                                                                        style: GoogleFonts.poppins(
+                                                                          color: Colors
+                                                                              .white
+                                                                              .withOpacity(
+                                                                                0.6,
+                                                                              ),
+                                                                          fontSize:
+                                                                              10,
+                                                                          fontWeight:
+                                                                              FontWeight.w500,
+                                                                        ),
+                                                                      ),
+                                                                      Text(
+                                                                        currentLabel,
+                                                                        style: GoogleFonts.poppins(
+                                                                          color:
+                                                                              Colors.white,
+                                                                          fontWeight:
+                                                                              FontWeight.w600,
+                                                                          fontSize:
+                                                                              13,
+                                                                        ),
+                                                                        overflow:
+                                                                            TextOverflow
+                                                                                .ellipsis,
+                                                                        maxLines:
+                                                                            1,
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                                const SizedBox(
+                                                                  width: 4,
+                                                                ),
+                                                                const Icon(
+                                                                  Icons
+                                                                      .arrow_drop_down,
+                                                                  color:
+                                                                      Colors
+                                                                          .white70,
+                                                                  size: 16,
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        )
+                                                      )
+                                                      else
+                                                        // Compact: show only a small file switcher icon button
+                                                        IconButton(
+                                                          tooltip:
+                                                              'Switch canvas file',
+                                                          onPressed: () async {
+                                                            await _showFileSwitcherMenu(
+                                                              context,
+                                                              ref,
+                                                            );
+                                                          },
+                                                          icon: const Icon(
+                                                            Icons.folder_open,
+                                                            color: Colors.white70,
+                                                            size: 18,
+                                                          ),
+                                                          iconSize: 18,
+                                                          padding:
+                                                              const EdgeInsets.all(
+                                                                6,
+                                                              ),
+                                                          constraints:
+                                                              const BoxConstraints(
+                                                                minWidth: 32,
+                                                                minHeight: 32,
+                                                              ),
+                                                          style: IconButton.styleFrom(
+                                                            backgroundColor: Colors
+                                                                .white
+                                                                .withOpacity(0.05),
+                                                            shape: RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    6,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      if (!ultra) ...[
+                                                        const SizedBox(width: 6),
+                                                        _CanvasHeaderToggle(
+                                                          mode: _canvasViewMode,
+                                                          meta:
+                                                              state
+                                                                  .selectedCanvasMeta,
+                                                        ),
+                                                      ],
+                                                      const SizedBox(width: 6),
+                                                      _VersionDropdown(ref: ref),
+                                                      const SizedBox(width: 4),
+                                                      IconButton(
+                                                        tooltip:
+                                                            _canvasFullscreen
+                                                                ? 'Exit Fullscreen'
+                                                                : 'View Fullscreen',
+                                                        onPressed:
+                                                            () => setState(() {
+                                                          _canvasFullscreen =
+                                                              !_canvasFullscreen;
+                                                        }),
+                                                        icon: Icon(
+                                                          _canvasFullscreen
+                                                              ? Icons
+                                                                  .fullscreen_exit
+                                                              : Icons.fullscreen,
+                                                          color: Colors.white70,
+                                                          size: 18,
+                                                        ),
+                                                        iconSize: 18,
+                                                        padding:
+                                                            const EdgeInsets.all(6),
+                                                        constraints:
+                                                            const BoxConstraints(
+                                                              minWidth: 32,
+                                                              minHeight: 32,
+                                                            ),
+                                                        style: IconButton.styleFrom(
+                                                          backgroundColor: Colors
+                                                              .white
+                                                              .withOpacity(0.05),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  6,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      _CanvasMoreMenu(ref: ref),
+                                                      const SizedBox(width: 4),
+                                                      IconButton(
+                                                        tooltip: 'Close Canvas',
+                                                        onPressed:
+                                                            () =>
+                                                                ref
+                                                                    .read(
+                                                                      playgroundProvider,
+                                                                    )
+                                                                    .closeCanvas(),
+                                                        icon: const Icon(
+                                                          Icons.close,
+                                                          color: Colors.white70,
+                                                          size: 18,
+                                                        ),
+                                                        iconSize: 18,
+                                                        padding:
+                                                            const EdgeInsets.all(6),
+                                                        constraints:
+                                                            const BoxConstraints(
+                                                              minWidth: 32,
+                                                              minHeight: 32,
+                                                            ),
+                                                        style: IconButton.styleFrom(
+                                                          backgroundColor: Colors
+                                                              .white
+                                                              .withOpacity(0.05),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  6,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                            // Preview banner when looking at a historical version
+                                            _PreviewVersionBanner(ref: ref),
+                                            Expanded(
+                                              child: _CanvasPreviewHost(
+                                                ref: ref,
+                                                mode: _canvasViewMode,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 8,
-                                          offset: const Offset(-2, 0),
-                                        ),
-                                      ],
                                     ),
+                                  ),
+                                ],
+                              ),
+                              if (_canvasFullscreen)
+                                Positioned.fill(
+                                  child: Container(
+                                    color: const Color(0xFF0F1420),
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
                                       children: [
-                                        // Header
                                         Container(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 12,
-                                            vertical: 12,
+                                            vertical: 10,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withOpacity(
-                                              0.03,
-                                            ),
+                                            color: Colors.white.withOpacity(0.04),
                                             border: Border(
                                               bottom: BorderSide(
                                                 color: Colors.white.withOpacity(
@@ -1188,22 +1573,19 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                           ),
                                           child: LayoutBuilder(
                                             builder: (context, head) {
-                                              final compact =
-                                                  head.maxWidth < 480;
+                                              final compact = head.maxWidth < 480;
                                               final ultra = head.maxWidth < 360;
                                               final state = ref.watch(
                                                 playgroundProvider,
                                               );
                                               final currentPath =
-                                                  state.selectedCanvasPath ??
-                                                  '';
+                                                  state.selectedCanvasPath ?? '';
                                               final desc =
                                                   (state.selectedCanvasMeta?['description']
                                                           as String?)
                                                       ?.trim();
                                               final currentLabel =
-                                                  (desc != null &&
-                                                          desc.isNotEmpty)
+                                                  (desc != null && desc.isNotEmpty)
                                                       ? desc
                                                       : (currentPath
                                                               .split('/')
@@ -1214,41 +1596,6 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                                           : currentPath);
                                               return Row(
                                                 children: [
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.all(6),
-                                                    decoration: BoxDecoration(
-                                                      gradient:
-                                                          const LinearGradient(
-                                                            colors: [
-                                                              Color(0xFF7F5AF0),
-                                                              Color(0xFF9D4EDD),
-                                                            ],
-                                                          ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            6,
-                                                          ),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: const Color(
-                                                            0xFF7F5AF0,
-                                                          ).withOpacity(0.3),
-                                                          blurRadius: 4,
-                                                          offset: const Offset(
-                                                            0,
-                                                            1,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.code,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(width: 8),
                                                   if (!compact)
                                                     Expanded(
                                                       child: InkWell(
@@ -1271,45 +1618,24 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                                           child: Row(
                                                             children: [
                                                               Expanded(
-                                                                child: Column(
-                                                                  crossAxisAlignment:
-                                                                      CrossAxisAlignment
-                                                                          .start,
-                                                                  mainAxisSize:
-                                                                      MainAxisSize
-                                                                          .min,
-                                                                  children: [
-                                                                    Text(
-                                                                      'Canvas',
-                                                                      style: GoogleFonts.poppins(
-                                                                        color: Colors
-                                                                            .white
-                                                                            .withOpacity(
-                                                                              0.6,
-                                                                            ),
-                                                                        fontSize:
-                                                                            10,
-                                                                        fontWeight:
-                                                                            FontWeight.w500,
-                                                                      ),
-                                                                    ),
-                                                                    Text(
-                                                                      currentLabel,
-                                                                      style: GoogleFonts.poppins(
-                                                                        color:
-                                                                            Colors.white,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        fontSize:
-                                                                            13,
-                                                                      ),
-                                                                      overflow:
-                                                                          TextOverflow
-                                                                              .ellipsis,
-                                                                      maxLines:
-                                                                          1,
-                                                                    ),
-                                                                  ],
+                                                                child: Text(
+                                                                  currentLabel
+                                                                          .isEmpty
+                                                                      ? 'Canvas'
+                                                                      : currentLabel,
+                                                                  style: GoogleFonts.poppins(
+                                                                    color:
+                                                                        Colors
+                                                                            .white70,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w600,
+                                                                    fontSize: 14,
+                                                                  ),
+                                                                  overflow:
+                                                                      TextOverflow
+                                                                          .ellipsis,
+                                                                  maxLines: 1,
                                                                 ),
                                                               ),
                                                               const SizedBox(
@@ -1329,10 +1655,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                                       ),
                                                     )
                                                   else
-                                                    // Compact: show only a small file switcher icon button
                                                     IconButton(
-                                                      tooltip:
-                                                          'Switch canvas file',
+                                                      tooltip: 'Switch canvas file',
                                                       onPressed: () async {
                                                         await _showFileSwitcherMenu(
                                                           context,
@@ -1345,26 +1669,14 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                                         size: 18,
                                                       ),
                                                       iconSize: 18,
-                                                      padding:
-                                                          const EdgeInsets.all(
-                                                            6,
-                                                          ),
+                                                      padding: const EdgeInsets.all(
+                                                        6,
+                                                      ),
                                                       constraints:
                                                           const BoxConstraints(
                                                             minWidth: 32,
                                                             minHeight: 32,
                                                           ),
-                                                      style: IconButton.styleFrom(
-                                                        backgroundColor: Colors
-                                                            .white
-                                                            .withOpacity(0.05),
-                                                        shape: RoundedRectangleBorder(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                6,
-                                                              ),
-                                                        ),
-                                                      ),
                                                     ),
                                                   if (!ultra) ...[
                                                     const SizedBox(width: 6),
@@ -1379,86 +1691,34 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                                   _VersionDropdown(ref: ref),
                                                   const SizedBox(width: 4),
                                                   IconButton(
-                                                    tooltip:
-                                                        _canvasFullscreen
-                                                            ? 'Exit Fullscreen'
-                                                            : 'View Fullscreen',
+                                                    tooltip: 'Exit Fullscreen',
                                                     onPressed:
                                                         () => setState(() {
-                                                          _canvasFullscreen =
-                                                              !_canvasFullscreen;
-                                                        }),
-                                                    icon: Icon(
-                                                      _canvasFullscreen
-                                                          ? Icons
-                                                              .fullscreen_exit
-                                                          : Icons.fullscreen,
+                                                      _canvasFullscreen = false;
+                                                    }),
+                                                    icon: const Icon(
+                                                      Icons.fullscreen_exit,
                                                       color: Colors.white70,
                                                       size: 18,
                                                     ),
                                                     iconSize: 18,
-                                                    padding:
-                                                        const EdgeInsets.all(6),
+                                                    padding: const EdgeInsets.all(
+                                                      6,
+                                                    ),
                                                     constraints:
                                                         const BoxConstraints(
                                                           minWidth: 32,
                                                           minHeight: 32,
                                                         ),
-                                                    style: IconButton.styleFrom(
-                                                      backgroundColor: Colors
-                                                          .white
-                                                          .withOpacity(0.05),
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              6,
-                                                            ),
-                                                      ),
-                                                    ),
                                                   ),
                                                   const SizedBox(width: 4),
                                                   _CanvasMoreMenu(ref: ref),
-                                                  const SizedBox(width: 4),
-                                                  IconButton(
-                                                    tooltip: 'Close Canvas',
-                                                    onPressed:
-                                                        () =>
-                                                            ref
-                                                                .read(
-                                                                  playgroundProvider,
-                                                                )
-                                                                .closeCanvas(),
-                                                    icon: const Icon(
-                                                      Icons.close,
-                                                      color: Colors.white70,
-                                                      size: 18,
-                                                    ),
-                                                    iconSize: 18,
-                                                    padding:
-                                                        const EdgeInsets.all(6),
-                                                    constraints:
-                                                        const BoxConstraints(
-                                                          minWidth: 32,
-                                                          minHeight: 32,
-                                                        ),
-                                                    style: IconButton.styleFrom(
-                                                      backgroundColor: Colors
-                                                          .white
-                                                          .withOpacity(0.05),
-                                                      shape: RoundedRectangleBorder(
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              6,
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ),
                                                 ],
                                               );
                                             },
                                           ),
                                         ),
-                                        // Preview banner when looking at a historical version
+                                        // Preview banner when looking at a historical version (fullscreen)
                                         _PreviewVersionBanner(ref: ref),
                                         Expanded(
                                           child: _CanvasPreviewHost(
@@ -1470,201 +1730,31 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                     ),
                                   ),
                                 ),
-                              ),
                             ],
-                          ),
-                          if (_canvasFullscreen)
-                            Positioned.fill(
-                              child: Container(
-                                color: const Color(0xFF0F1420),
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.04),
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: Colors.white.withOpacity(
-                                              0.08,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      child: LayoutBuilder(
-                                        builder: (context, head) {
-                                          final compact = head.maxWidth < 480;
-                                          final ultra = head.maxWidth < 360;
-                                          final state = ref.watch(
-                                            playgroundProvider,
-                                          );
-                                          final currentPath =
-                                              state.selectedCanvasPath ?? '';
-                                          final desc =
-                                              (state.selectedCanvasMeta?['description']
-                                                      as String?)
-                                                  ?.trim();
-                                          final currentLabel =
-                                              (desc != null && desc.isNotEmpty)
-                                                  ? desc
-                                                  : (currentPath
-                                                          .split('/')
-                                                          .isNotEmpty
-                                                      ? currentPath
-                                                          .split('/')
-                                                          .last
-                                                      : currentPath);
-                                          return Row(
-                                            children: [
-                                              if (!compact)
-                                                Expanded(
-                                                  child: InkWell(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          6,
-                                                        ),
-                                                    onTap: () async {
-                                                      await _showFileSwitcherMenu(
-                                                        context,
-                                                        ref,
-                                                      );
-                                                    },
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            vertical: 2,
-                                                            horizontal: 4,
-                                                          ),
-                                                      child: Row(
-                                                        children: [
-                                                          Expanded(
-                                                            child: Text(
-                                                              currentLabel
-                                                                      .isEmpty
-                                                                  ? 'Canvas'
-                                                                  : currentLabel,
-                                                              style: GoogleFonts.poppins(
-                                                                color:
-                                                                    Colors
-                                                                        .white70,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .w600,
-                                                                fontSize: 14,
-                                                              ),
-                                                              overflow:
-                                                                  TextOverflow
-                                                                      .ellipsis,
-                                                              maxLines: 1,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                            width: 4,
-                                                          ),
-                                                          const Icon(
-                                                            Icons
-                                                                .arrow_drop_down,
-                                                            color:
-                                                                Colors.white70,
-                                                            size: 16,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                )
-                                              else
-                                                IconButton(
-                                                  tooltip: 'Switch canvas file',
-                                                  onPressed: () async {
-                                                    await _showFileSwitcherMenu(
-                                                      context,
-                                                      ref,
-                                                    );
-                                                  },
-                                                  icon: const Icon(
-                                                    Icons.folder_open,
-                                                    color: Colors.white70,
-                                                    size: 18,
-                                                  ),
-                                                  iconSize: 18,
-                                                  padding: const EdgeInsets.all(
-                                                    6,
-                                                  ),
-                                                  constraints:
-                                                      const BoxConstraints(
-                                                        minWidth: 32,
-                                                        minHeight: 32,
-                                                      ),
-                                                ),
-                                              if (!ultra) ...[
-                                                const SizedBox(width: 6),
-                                                _CanvasHeaderToggle(
-                                                  mode: _canvasViewMode,
-                                                  meta:
-                                                      state.selectedCanvasMeta,
-                                                ),
-                                              ],
-                                              const SizedBox(width: 6),
-                                              _VersionDropdown(ref: ref),
-                                              const SizedBox(width: 4),
-                                              IconButton(
-                                                tooltip: 'Exit Fullscreen',
-                                                onPressed:
-                                                    () => setState(() {
-                                                      _canvasFullscreen = false;
-                                                    }),
-                                                icon: const Icon(
-                                                  Icons.fullscreen_exit,
-                                                  color: Colors.white70,
-                                                  size: 18,
-                                                ),
-                                                iconSize: 18,
-                                                padding: const EdgeInsets.all(
-                                                  6,
-                                                ),
-                                                constraints:
-                                                    const BoxConstraints(
-                                                      minWidth: 32,
-                                                      minHeight: 32,
-                                                    ),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              _CanvasMoreMenu(ref: ref),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    // Preview banner when looking at a historical version (fullscreen)
-                                    _PreviewVersionBanner(ref: ref),
-                                    Expanded(
-                                      child: _CanvasPreviewHost(
-                                        ref: ref,
-                                        mode: _canvasViewMode,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
+                          );
+                        },
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
+        
+          // floatingActionButton: HelpTourButton(
+          //   tourKeys: [
+              
+          //     tour.playgroundArtifactsKey,
+          //     tour.playgroundCanvasKey,
+          //    // tour.playgroundTopicModalKey,
+          //   ],
+          // ),
+        );
+      },
     );
   }
 
   Widget _buildLanding(BuildContext context) {
+    final tour = ref.read(tourProvider);
     // Landing hero with centered text and narrow (30%) input bar
     final width = MediaQuery.of(context).size.width;
     final inputWidth = width * 0.3; // 30%
@@ -1782,23 +1872,30 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
             constraints: BoxConstraints(maxWidth: inputWidth.clamp(360, 720)),
             child: Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: _InputBar(
-                controller: _controller,
-                focusNode: _focusNode,
-                attachments: _attachments,
-                onPickFiles: _pickFiles,
-                onRemoveAttachmentAt: _removeAttachmentAt,
-                onSend: _send,
-                uploading: _uploading,
-                sending:
-                    ref.watch(playgroundProvider).sending ||
-                    ref.watch(playgroundProvider).streaming,
-                onHoverImageEnterUrl: _showImageHoverOverlayForPill,
-                onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
-                onHoverImageExit: _removeImageHoverOverlay,
-                onOpenImageModalUrl: _showImageModal,
-                onOpenImageModalBytes: _showImageModalBytes,
-              ),
+        child:   Showcase.withWidget(
+  key: tour.inputKey,
+  container: const AppShowcaseWidget(
+    title: 'Start here',
+    description: 'Type your request and submit to generate results. \n\n For example: *Build a simple snake game*',
+  ),
+  height: 150,
+  width: 250,
+  child: _InputBar(
+    controller: _controller,
+    focusNode: _focusNode,
+    attachments: _attachments,
+    onPickFiles: _pickFiles,
+    onRemoveAttachmentAt: _removeAttachmentAt,
+    onSend: _send,
+    uploading: _uploading,
+    sending: ref.watch(playgroundProvider).sending || ref.watch(playgroundProvider).streaming,
+    onHoverImageEnterUrl: _showImageHoverOverlayForPill,
+    onHoverImageEnterBytes: _showImageHoverOverlayForPillBytes,
+    onHoverImageExit: _removeImageHoverOverlay,
+    onOpenImageModalUrl: _showImageModal,
+    onOpenImageModalBytes: _showImageModalBytes,
+  ),
+)
             ),
           ),
         ],
