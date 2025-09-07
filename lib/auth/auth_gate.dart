@@ -13,7 +13,7 @@ class AuthGate extends ConsumerWidget {
     try {
       // Call the RPC function on the database.
       final response = await Supabase.instance.client.rpc('get_or_create_user');
-      
+
       // The RPC returns a list of rows. It might be empty.
       final userList = response as List;
       if (userList.isEmpty) {
@@ -46,12 +46,15 @@ class AuthGate extends ConsumerWidget {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
-                    body: Center(child: CircularProgressIndicator()));
+                  body: Center(child: CircularProgressIndicator()),
+                );
               }
-              
+
               final profile = snapshot.data;
               if (profile == null) {
-                return const Scaffold(body: Center(child: Text("Could not load user profile.")));
+                return const Scaffold(
+                  body: Center(child: Text("Could not load user profile.")),
+                );
               }
 
               final hasCompletedOnboarding = profile.hasCompletedOnboarding;
@@ -63,8 +66,9 @@ class AuthGate extends ConsumerWidget {
           );
         }
       },
-      loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading:
+          () =>
+              const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (err, _) => Scaffold(body: Center(child: Text('Error: $err'))),
     );
   }

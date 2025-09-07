@@ -17,6 +17,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/providers/playground_provider.dart';
 import 'package:codemate/widgets/premium_sidebar.dart';
+import 'package:showcaseview/showcaseview.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -29,6 +30,12 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
+  final GlobalKey _buildButtonKey = GlobalKey();
+  final GlobalKey _playgroundButtonKey = GlobalKey();
+  final GlobalKey _learnButtonKey = GlobalKey();
+  final GlobalKey _sidebarKey = GlobalKey();
+  bool _showcaseStarted = false;
+
   @override
   void initState() {
     super.initState();
@@ -46,7 +53,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       'afternoon': [
         'Good afternoon,',
         "Hope you're having a great day,",
-        'Keep up the great work,'
+        'Keep up the great work,',
       ],
       'evening': ['Good evening,', 'Time to wind down,', 'The night is young,'],
     };
@@ -83,79 +90,135 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final projectsCount = ref.watch(projectsProvider).projects.length;
     final coursesCount = ref.watch(coursesProvider).enrolledCoursesCount;
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              Color(0xFF0A0A0D),
-              Color(0xFF121216),
-              Color(0xFF1A1A20),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
-        child: Row(
-        children: [
-          PremiumSidebar(
-            items: [
-              PremiumSidebarItem(icon: Icons.home, label: 'Home', onTap: () {} , selected: true),
-              PremiumSidebarItem(icon: Icons.play_arrow_rounded, label: 'Playground', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaygroundPage()));
-              }),
-              PremiumSidebarItem(icon: Icons.construction_rounded, label: 'Build', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const BuildPage()));
-              }),
-              PremiumSidebarItem(icon: Icons.school_rounded, label: 'Learn', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const LearnPage()));
-              }),
-            ],
-            topPadding: 20,
-          ),
-          Expanded(
-            child: Stack(
+    return ShowCaseWidget(
+      builder: (showcaseContext) {
+        if (!_showcaseStarted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            ShowCaseWidget.of(
+              showcaseContext,
+            ).startShowCase([_buildButtonKey, _learnButtonKey]);
+          });
+          _showcaseStarted = true;
+        }
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Color(0xFF0A0A0D),
+                  Color(0xFF121216),
+                  Color(0xFF1A1A20),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                stops: [0.0, 0.5, 1.0],
+              ),
+            ),
+            child: Row(
               children: [
-                _buildGlowEffect(context),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      children: [
-                        _buildTopBar(context, initials, widget.profile.fullName),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 80), // Moves content up by adding bottom padding
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildGreeting(widget.profile.username),
-                                const SizedBox(height: 40),
-                                _buildActionButtons(context, projectsCount, coursesCount),
-                                const SizedBox(height: 28),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.3),
-                                    child: _HomeInputBar(),
+                PremiumSidebar(
+                  items: [
+                    PremiumSidebarItem(
+                      icon: Icons.home,
+                      label: 'Home',
+                      onTap: () {},
+                      selected: true,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Playground',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PlaygroundPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.construction_rounded,
+                      label: 'Build',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const BuildPage()),
+                        );
+                      },
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.school_rounded,
+                      label: 'Learn',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LearnPage()),
+                        );
+                      },
+                    ),
+                  ],
+                  topPadding: 20,
+                ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      _buildGlowEffect(context),
+                      SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Column(
+                            children: [
+                              _buildTopBar(
+                                context,
+                                initials,
+                                widget.profile.fullName,
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: 80,
+                                  ), // Moves content up by adding bottom padding
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _buildGreeting(widget.profile.username),
+                                      const SizedBox(height: 40),
+                                      _buildActionButtons(
+                                        context,
+                                        projectsCount,
+                                        coursesCount,
+                                      ),
+                                      const SizedBox(height: 28),
+                                      Align(
+                                        alignment: Alignment.center,
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth:
+                                                MediaQuery.of(
+                                                  context,
+                                                ).size.width *
+                                                0.3,
+                                          ),
+                                          child: _HomeInputBar(),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -233,10 +296,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
-                colors: [
-                  Colors.white.withOpacity(0.03),
-                  Colors.transparent,
-                ],
+                colors: [Colors.white.withOpacity(0.03), Colors.transparent],
                 stops: const [0.0, 1.0],
               ),
             ),
@@ -268,8 +328,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           IconButton(
-            icon: Icon(Icons.notifications_none_rounded,
-                color: Colors.white.withOpacity(0.8), size: 28),
+            icon: Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white.withOpacity(0.8),
+              size: 28,
+            ),
             onPressed: () {},
           ),
           const SizedBox(width: 12),
@@ -322,46 +385,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         const SizedBox(height: 16),
         Text(
           _getSecondaryGreeting(),
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            color: Colors.white70,
-          ),
+          style: GoogleFonts.poppins(fontSize: 20, color: Colors.white70),
         ),
       ],
     );
   }
 
   Widget _buildActionButtons(
-      BuildContext context, int projectsCount, int coursesCount) {
+    BuildContext context,
+    int projectsCount,
+    int coursesCount,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildActionButton(
-          context,
-          icon: Icons.construction_rounded,
-          label: 'Build',
-          tooltip: 'Start a new project with AI assistance',
-          badgeCount: projectsCount,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const BuildPage()),
-            );
-          },
+        Showcase(
+          key: _buildButtonKey,
+          title: 'Build',
+          titleTextAlign: TextAlign.center,
+          descriptionTextAlign: TextAlign.center,
+          description: 'Start a new project with AI assistance',
+          child: _buildActionButton(
+            context,
+            icon: Icons.construction_rounded,
+            label: 'Build',
+            tooltip: 'Start a new project with AI assistance',
+            badgeCount: projectsCount,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const BuildPage()),
+              );
+            },
+          ),
         ),
         const SizedBox(width: 30),
-        _buildActionButton(
-          context,
-          icon: Icons.school_rounded,
-          label: 'Learn',
-          tooltip: 'Explore guided learning paths and courses',
-          badgeCount: coursesCount,
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const LearnPage()),
-            );
-          },
+        Showcase(
+          key: _learnButtonKey,
+          title: 'Learn',
+          titleTextAlign: TextAlign.center,
+          descriptionTextAlign: TextAlign.center,
+          description: 'Explore guided learning paths and courses',
+          child: _buildActionButton(
+            context,
+            icon: Icons.school_rounded,
+            label: 'Learn',
+            tooltip: 'Explore guided learning paths and courses',
+            badgeCount: coursesCount,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LearnPage()),
+              );
+            },
+          ),
         ),
       ],
     );
@@ -443,12 +520,15 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
   bool _sending = false;
-  bool _uploading = false; // show 'Processing attachments…' while uploading on send
+  bool _uploading =
+      false; // show 'Processing attachments…' while uploading on send
   OverlayEntry? _imageHoverOverlay;
 
   @override
   void dispose() {
-    try { _imageHoverOverlay?.remove(); } catch (_) {}
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -461,7 +541,8 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown'))
+      return 'text/markdown';
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
     if (lower.endsWith('.xml')) return 'application/xml';
@@ -474,8 +555,17 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     // Allowed extensions
     const allowed = {
       'pdf',
-      'png', 'jpg', 'jpeg', 'webp', 'gif',
-      'txt', 'md', 'markdown', 'html', 'htm', 'xml',
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'txt',
+      'md',
+      'markdown',
+      'html',
+      'htm',
+      'xml',
     };
 
     final result = await FilePicker.platform.pickFiles(
@@ -490,7 +580,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (remaining <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('You can attach up to 3 files.', style: GoogleFonts.poppins()),
+          content: Text(
+            'You can attach up to 3 files.',
+            style: GoogleFonts.poppins(),
+          ),
         ),
       );
       return;
@@ -499,7 +592,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     for (final f in result.files.take(remaining)) {
       if (f.bytes == null) continue;
       final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
-      if (!allowed.contains(ext)) { rejected++; continue; }
+      if (!allowed.contains(ext)) {
+        rejected++;
+        continue;
+      }
       _attachments.add({
         'bytes': f.bytes!,
         'mime_type': _guessMime(f.name),
@@ -508,7 +604,12 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     }
     if (rejected > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Some files were rejected (unsupported type).', style: GoogleFonts.poppins())),
+        SnackBar(
+          content: Text(
+            'Some files were rejected (unsupported type).',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
       );
     }
     setState(() {});
@@ -519,7 +620,9 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   }
 
   void _removeImageHoverOverlay() {
-    try { _imageHoverOverlay?.remove(); } catch (_) {}
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
     _imageHoverOverlay = null;
   }
 
@@ -543,41 +646,50 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (top < 8) top = topLeft.dy + size.height + 8;
 
     _imageHoverOverlay = OverlayEntry(
-      builder: (ctx) => Positioned(
-        left: left,
-        top: top,
-        width: previewW,
-        height: previewH,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+      builder:
+          (ctx) => Positioned(
+            left: left,
+            top: top,
+            width: previewW,
+            height: previewH,
+            child: IgnorePointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(url, width: previewW, height: previewH, fit: BoxFit.cover),
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      url,
+                      width: previewW,
+                      height: previewH,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
     );
     overlay.insert(_imageHoverOverlay!);
   }
 
-  void _showImageHoverOverlayForPillBytes(BuildContext pillContext, List<int> bytes) {
+  void _showImageHoverOverlayForPillBytes(
+    BuildContext pillContext,
+    List<int> bytes,
+  ) {
     _removeImageHoverOverlay();
     final overlay = Overlay.of(context);
     if (overlay == null) return;
@@ -597,41 +709,44 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (top < 8) top = topLeft.dy + size.height + 8;
 
     _imageHoverOverlay = OverlayEntry(
-      builder: (ctx) => Positioned(
-        left: left,
-        top: top,
-        width: previewW,
-        height: previewH,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+      builder:
+          (ctx) => Positioned(
+            left: left,
+            top: top,
+            width: previewW,
+            height: previewH,
+            child: IgnorePointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  (bytes is List<int>) ? Uint8List.fromList(bytes) : (bytes as Uint8List),
-                  width: previewW,
-                  height: previewH,
-                  fit: BoxFit.cover,
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      (bytes is List<int>)
+                          ? Uint8List.fromList(bytes)
+                          : (bytes as Uint8List),
+                      width: previewW,
+                      height: previewH,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
     );
     overlay.insert(_imageHoverOverlay!);
   }
@@ -640,32 +755,50 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F1420),
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 840),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: const Color(0xFF0F1420),
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 840),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.image_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
                   ),
-                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(bytes, fit: BoxFit.contain)),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -673,32 +806,50 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F1420),
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 840),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: const Color(0xFF0F1420),
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 840),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.image_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
                   ),
-                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, fit: BoxFit.contain)),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -717,11 +868,15 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
       final client = Supabase.instance.client;
       final List<Map<String, dynamic>> out = [];
 
-      final hasUploadables = _attachments.any((a) => a['bytes'] is Uint8List || a['bytes'] is List<int>);
+      final hasUploadables = _attachments.any(
+        (a) => a['bytes'] is Uint8List || a['bytes'] is List<int>,
+      );
       if (hasUploadables) setState(() => _uploading = true);
 
       // Already-uploaded items (rare in Home after this refactor)
-      for (final a in _attachments.where((a) => a.containsKey('bucket') && a.containsKey('path'))) {
+      for (final a in _attachments.where(
+        (a) => a.containsKey('bucket') && a.containsKey('path'),
+      )) {
         final path = a['path'] as String;
         final signedUrl = await _createSignedUrl(client, path);
         final bucket = (a['bucket'] as String?) ?? 'user-uploads';
@@ -731,13 +886,17 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
           'mime_type': a['mime_type'],
           'file_name': a['file_name'],
           if (signedUrl != null) 'signedUrl': signedUrl,
-          if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+          if (signedUrl != null)
+            'bucket_url':
+                signedUrl, // backend will sanitize to real bucket path
           if (signedUrl != null) 'uri': signedUrl,
         });
       }
 
       // Items that only have a bucket_url
-      for (final a in _attachments.where((a) => !a.containsKey('path') && (a['bucket_url'] is String))) {
+      for (final a in _attachments.where(
+        (a) => !a.containsKey('path') && (a['bucket_url'] is String),
+      )) {
         final bukUrl = (a['bucket_url'] as String?) ?? '';
         out.add({
           'bucket_url': bukUrl,
@@ -749,20 +908,28 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
       }
 
       // Upload raw bytes now
-      for (final a in _attachments.where((a) => !(a.containsKey('bucket') && a.containsKey('path')))) {
+      for (final a in _attachments.where(
+        (a) => !(a.containsKey('bucket') && a.containsKey('path')),
+      )) {
         final bytes = a['bytes'];
         final mime = (a['mime_type'] as String?) ?? 'application/octet-stream';
         final name = (a['file_name'] as String?) ?? 'file';
         if (bytes is Uint8List || bytes is List<int>) {
           try {
-            final data = (bytes is Uint8List) ? bytes : Uint8List.fromList(bytes as List<int>);
+            final data =
+                (bytes is Uint8List)
+                    ? bytes
+                    : Uint8List.fromList(bytes as List<int>);
             final folder = 'home/uploads';
-            final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
-            await client.storage.from('user-uploads').uploadBinary(
-              path,
-              data,
-              fileOptions: FileOptions(contentType: mime, upsert: true),
-            );
+            final path =
+                '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
+            await client.storage
+                .from('user-uploads')
+                .uploadBinary(
+                  path,
+                  data,
+                  fileOptions: FileOptions(contentType: mime, upsert: true),
+                );
             final signedUrl = await _createSignedUrl(client, path);
             const bucket = 'user-uploads';
             out.add({
@@ -771,13 +938,20 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
               'mime_type': mime,
               'file_name': name,
               if (signedUrl != null) 'signedUrl': signedUrl,
-              if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+              if (signedUrl != null)
+                'bucket_url':
+                    signedUrl, // backend will sanitize to real bucket path
               if (signedUrl != null) 'uri': signedUrl,
             });
           } catch (e) {
             // Skip adding the file if upload fails; surface a subtle toast.
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to upload $name', style: GoogleFonts.poppins())),
+              SnackBar(
+                content: Text(
+                  'Failed to upload $name',
+                  style: GoogleFonts.poppins(),
+                ),
+              ),
             );
           }
         }
@@ -803,7 +977,7 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
 
   @override
   Widget build(BuildContext context) {
-  return ClipRRect(
+    return ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -820,68 +994,110 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
               // Top layer: input area (and attachments chips)
               if (_attachments.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0, left: 4, right: 4),
+                  padding: const EdgeInsets.only(
+                    bottom: 8.0,
+                    left: 4,
+                    right: 4,
+                  ),
                   child: Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
                       for (int i = 0; i < _attachments.length; i++)
-                        Builder(builder: (pillCtx) {
-                          final a = _attachments[i];
-                          final name = a['file_name'] as String? ?? 'file';
-                          final mime = a['mime_type'] as String? ?? 'application/octet-stream';
-                          final isImage = mime.startsWith('image/');
-                          final bytes = a['bytes'] as Uint8List?;
-                          final signedUrl = a['signedUrl'] as String?;
-                          final bucketUrl = a['bucket_url'] as String?;
-                          final url = (signedUrl != null && signedUrl.isNotEmpty)
-                              ? signedUrl
-                              : ((bucketUrl != null && bucketUrl.isNotEmpty) ? bucketUrl : null);
-                          final pill = Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: Colors.white.withOpacity(0.12)),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(isImage ? Icons.image_outlined : Icons.attach_file, color: Colors.white70, size: 14),
-                                const SizedBox(width: 6),
-                                Text(name, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () => _removeAttachmentAt(i),
-                                  child: const Icon(Icons.close, color: Colors.white60, size: 14),
-                                )
-                              ],
-                            ),
-                          );
-                          if (isImage && bytes != null) {
-                            return MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              onEnter: (_) => _showImageHoverOverlayForPillBytes(pillCtx, bytes),
-                              onExit: (_) => _removeImageHoverOverlay(),
-                              child: GestureDetector(
-                                onTap: () => _showImageModalBytes(bytes, name),
-                                child: pill,
+                        Builder(
+                          builder: (pillCtx) {
+                            final a = _attachments[i];
+                            final name = a['file_name'] as String? ?? 'file';
+                            final mime =
+                                a['mime_type'] as String? ??
+                                'application/octet-stream';
+                            final isImage = mime.startsWith('image/');
+                            final bytes = a['bytes'] as Uint8List?;
+                            final signedUrl = a['signedUrl'] as String?;
+                            final bucketUrl = a['bucket_url'] as String?;
+                            final url =
+                                (signedUrl != null && signedUrl.isNotEmpty)
+                                    ? signedUrl
+                                    : ((bucketUrl != null &&
+                                            bucketUrl.isNotEmpty)
+                                        ? bucketUrl
+                                        : null);
+                            final pill = Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isImage
+                                        ? Icons.image_outlined
+                                        : Icons.attach_file,
+                                    color: Colors.white70,
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    name,
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () => _removeAttachmentAt(i),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white60,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
-                          } else if (isImage && url != null) {
-                            return MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              onEnter: (_) => _showImageHoverOverlayForPill(pillCtx, url),
-                              onExit: (_) => _removeImageHoverOverlay(),
-                              child: GestureDetector(
-                                onTap: () => _showImageModal(url, name),
-                                child: pill,
-                              ),
-                            );
-                          } else {
-                            return pill;
-                          }
-                        }),
+                            if (isImage && bytes != null) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter:
+                                    (_) => _showImageHoverOverlayForPillBytes(
+                                      pillCtx,
+                                      bytes,
+                                    ),
+                                onExit: (_) => _removeImageHoverOverlay(),
+                                child: GestureDetector(
+                                  onTap:
+                                      () => _showImageModalBytes(bytes, name),
+                                  child: pill,
+                                ),
+                              );
+                            } else if (isImage && url != null) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter:
+                                    (_) => _showImageHoverOverlayForPill(
+                                      pillCtx,
+                                      url,
+                                    ),
+                                onExit: (_) => _removeImageHoverOverlay(),
+                                child: GestureDetector(
+                                  onTap: () => _showImageModal(url, name),
+                                  child: pill,
+                                ),
+                              );
+                            } else {
+                              return pill;
+                            }
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -896,29 +1112,46 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
                   border: InputBorder.none,
                 ),
-                onSubmitted: (_) => (_sending || _uploading) ? null : _send(context),
+                onSubmitted:
+                    (_) => (_sending || _uploading) ? null : _send(context),
               ),
               const SizedBox(height: 8),
               // Bottom layer: attach + send row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(children: [
-                    IconButton(
-                      onPressed: (_sending || _uploading) ? null : _pickFiles,
-                      icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
-                    ),
-                  ]),
+                  Row(
+                    children: [
+                      IconButton(
+                        onPressed: (_sending || _uploading) ? null : _pickFiles,
+                        icon: const Icon(
+                          Icons.add_circle_outline,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
                   ElevatedButton(
-                    onPressed: (_sending || _uploading) ? null : () => _send(context),
+                    onPressed:
+                        (_sending || _uploading) ? null : () => _send(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.accent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       padding: const EdgeInsets.all(12),
                     ),
-                    child: (_sending || _uploading)
-                        ? const SizedBox(width: 22, height: 22, child: MiniWave(size: 22))
-                        : const Icon(Icons.arrow_upward, color: Colors.white),
+                    child:
+                        (_sending || _uploading)
+                            ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: MiniWave(size: 22),
+                            )
+                            : const Icon(
+                              Icons.arrow_upward,
+                              color: Colors.white,
+                            ),
                   ),
                 ],
               ),
@@ -927,7 +1160,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     'Processing attachments…',
-                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                    style: GoogleFonts.poppins(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
             ],
@@ -939,7 +1175,9 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
 
   Future<String?> _createSignedUrl(SupabaseClient client, String path) async {
     try {
-      final dynamic resp = await client.storage.from('user-uploads').createSignedUrl(path, 60 * 60);
+      final dynamic resp = await client.storage
+          .from('user-uploads')
+          .createSignedUrl(path, 60 * 60);
       if (resp is String) return resp;
       if (resp is Map) {
         final v1 = resp['signedUrl'];
@@ -949,7 +1187,8 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
         final v3 = resp['url'];
         if (v3 is String) return v3;
         final data = resp['data'];
-        if (data is Map && data['signedUrl'] is String) return data['signedUrl'] as String;
+        if (data is Map && data['signedUrl'] is String)
+          return data['signedUrl'] as String;
       }
     } catch (_) {}
     return null;
