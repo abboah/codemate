@@ -11,7 +11,12 @@ class TemplatePromptPills extends StatelessWidget {
   final List<TemplatePrompt> templates;
   final void Function(TemplatePrompt t) onSelect;
   final EdgeInsetsGeometry padding;
-  const TemplatePromptPills({super.key, required this.templates, required this.onSelect, this.padding = const EdgeInsets.only(top: 8)});
+  const TemplatePromptPills({
+    super.key,
+    required this.templates,
+    required this.onSelect,
+    this.padding = const EdgeInsets.only(top: 8),
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -21,7 +26,10 @@ class TemplatePromptPills extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: templates.map((t) => _Pill(face: t.face, onTap: () => onSelect(t))).toList(),
+        children:
+            templates
+                .map((t) => _Pill(face: t.face, onTap: () => onSelect(t)))
+                .toList(),
       ),
     );
   }
@@ -51,7 +59,11 @@ class _Pill extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               face,
-              style: GoogleFonts.poppins(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+              style: GoogleFonts.poppins(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ],
         ),
