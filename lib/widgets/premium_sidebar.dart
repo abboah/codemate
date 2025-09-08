@@ -1,10 +1,168 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:codemate/providers/auth_provider.dart';
-import 'package:codemate/providers/user_provider.dart';
 import 'package:codemate/components/settings_profile_modal.dart';
+// Conditional import to access CanvasHtmlOverlayController on web and a no-op stub elsewhere
+import 'package:codemate/widgets/canvas_html_preview_stub.dart'
+    if (dart.library.html) 'package:codemate/widgets/canvas_html_preview_web.dart';
+
+// Custom premium tooltip widget
+class _PremiumTooltip extends StatefulWidget {
+  final String message;
+  final Widget child;
+
+  const _PremiumTooltip({required this.message, required this.child});
+
+  @override
+  State<_PremiumTooltip> createState() => _PremiumTooltipState();
+}
+
+class _PremiumTooltipState extends State<_PremiumTooltip>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _opacityAnimation;
+  OverlayEntry? _overlayEntry;
+  bool _isHovering = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutBack));
+    _opacityAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _removeTooltip();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _showTooltip() {
+    if (_overlayEntry != null) return;
+
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          left: offset.dx + size.width + 12,
+          top: offset.dy + (size.height / 2) - 20,
+          child: IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _controller,
+              builder: (context, child) {
+                return Transform.scale(
+                  scale: _scaleAnimation.value,
+                  child: Opacity(
+                    opacity: _opacityAnimation.value,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF1A1D29).withOpacity(0.95),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.15),
+                                width: 1,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.accent.withOpacity(0.1),
+                                  blurRadius: 20,
+                                  spreadRadius: 2,
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Text(
+                              widget.message,
+                              style: GoogleFonts.poppins(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
+    );
+
+    overlay.insert(_overlayEntry!);
+    _controller.forward();
+  }
+
+  void _removeTooltip() {
+    if (_overlayEntry != null) {
+      _controller.reverse().then((_) {
+        _overlayEntry?.remove();
+        _overlayEntry = null;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) {
+        if (!_isHovering) {
+          _isHovering = true;
+          Future.delayed(const Duration(milliseconds: 600), () {
+            if (_isHovering && mounted) {
+              _showTooltip();
+            }
+          });
+        }
+      },
+      onExit: (_) {
+        _isHovering = false;
+        _removeTooltip();
+      },
+      child: widget.child,
+    );
+  }
+}
 
 class PremiumSidebarItem {
   final IconData icon;
@@ -25,6 +183,10 @@ class PremiumSidebar extends ConsumerStatefulWidget {
   final double collapsedWidth;
   final double expandedWidth;
   final double topPadding;
+  // Gap between top icon and the first navigation button in collapsed state
+  final double gapBelowTopIcon;
+  // When true, the whole collapsed width becomes the tap target for the top icon
+  final bool expandTopIconHitBox;
   // Optional middle content (e.g., Playground history panel)
   final Widget? middle;
 
@@ -34,6 +196,8 @@ class PremiumSidebar extends ConsumerStatefulWidget {
     this.collapsedWidth = 70,
     this.expandedWidth = 240,
     this.topPadding = 16,
+    this.gapBelowTopIcon = 18,
+    this.expandTopIconHitBox = false,
     this.middle,
   });
 
@@ -91,6 +255,10 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
     } catch (_) {}
     _overlay = null;
     _controller.dispose();
+    // Ensure iframe is not left suspended
+    try {
+      CanvasHtmlOverlayController.instance.resume();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -120,9 +288,13 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
         );
       },
     );
-    Overlay.of(context)?.insert(overlay);
+    Overlay.of(context, rootOverlay: true).insert(overlay);
     _overlay = overlay;
     _controller.forward(from: 0);
+    // Suspend HTML iframe interactions (web preview) while the sidebar overlay is open
+    try {
+      CanvasHtmlOverlayController.instance.suspend();
+    } catch (_) {}
   }
 
   void _hideOverlay() {
@@ -136,6 +308,10 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
         setState(() {
           _showing = false;
         });
+      // Resume iframe interactions once the sidebar closes
+      try {
+        CanvasHtmlOverlayController.instance.resume();
+      } catch (_) {}
     });
   }
 
@@ -154,15 +330,27 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
       child: Container(
         width: widget.collapsedWidth,
         decoration: BoxDecoration(
-          color: const Color(0xFF0F0F12),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0A0A0D), Color(0xFF0F0F12), Color(0xFF141418)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
           border: Border(
-            right: BorderSide(color: Colors.white.withOpacity(0.06)),
+            right: BorderSide(
+              color: Colors.white.withOpacity(0.08),
+              width: 1.5,
+            ),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 8,
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 12,
               offset: const Offset(2, 0),
+            ),
+            BoxShadow(
+              color: AppColors.accent.withOpacity(0.05),
+              blurRadius: 8,
+              spreadRadius: 2,
             ),
           ],
         ),
@@ -170,41 +358,60 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
           padding: EdgeInsets.only(top: widget.topPadding),
           child: Column(
             children: [
-              // App icon with enhanced styling
-              InkWell(
-                onTap: () => _showOverlay(),
-                child: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.accent.withOpacity(0.8),
-                        AppColors.accent.withOpacity(0.4),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.accent.withOpacity(0.3),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.accent.withOpacity(0.4),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+              // App icon with enhanced styling; optionally expand hitbox to full width
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _showOverlay,
+                  // Opaque hit test across full collapsed width if enabled
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: widget.expandTopIconHitBox ? 56 : 42,
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF6366F1),
+                              Color(0xFF8B5CF6),
+                              Color(0xFFEC4899),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.2),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF6366F1).withOpacity(0.4),
+                              blurRadius: 16,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 4),
+                            ),
+                            BoxShadow(
+                              color: const Color(0xFFEC4899).withOpacity(0.2),
+                              blurRadius: 20,
+                              spreadRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 22,
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: widget.gapBelowTopIcon),
               // Collapsed menu items (icons only)
               Expanded(
                 child: ListView.separated(
@@ -215,34 +422,51 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
                     final selected = item.selected;
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Tooltip(
+                      child: _PremiumTooltip(
                         message: item.label,
-                        preferBelow: false,
-                        child: InkWell(
-                          onTap: item.onTap,
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color:
-                                  selected
-                                      ? AppColors.accent.withOpacity(0.15)
-                                      : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color:
-                                    selected
-                                        ? AppColors.accent.withOpacity(0.3)
-                                        : Colors.transparent,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            child: InkWell(
+                              onTap: item.onTap,
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color:
+                                      selected
+                                          ? AppColors.accent.withOpacity(0.15)
+                                          : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color:
+                                        selected
+                                            ? AppColors.accent.withOpacity(0.4)
+                                            : Colors.transparent,
+                                    width: 1.5,
+                                  ),
+                                  boxShadow:
+                                      selected
+                                          ? [
+                                            BoxShadow(
+                                              color: AppColors.accent
+                                                  .withOpacity(0.2),
+                                              blurRadius: 12,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                          : null,
+                                ),
+                                child: Icon(
+                                  item.icon,
+                                  color:
+                                      selected
+                                          ? AppColors.accent
+                                          : Colors.white.withOpacity(0.75),
+                                  size: 24,
+                                ),
                               ),
-                            ),
-                            child: Icon(
-                              item.icon,
-                              color:
-                                  selected
-                                      ? AppColors.accent
-                                      : Colors.white.withOpacity(0.7),
-                              size: 24,
                             ),
                           ),
                         ),
@@ -262,176 +486,234 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
   }
 
   Widget _buildExpandedOverlayContent() {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F0F12),
-        border: Border(
-          right: BorderSide(color: Colors.white.withOpacity(0.08)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.4),
-            blurRadius: 16,
-            offset: const Offset(4, 0),
-          ),
-        ],
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(
+        topRight: Radius.circular(16),
+        bottomRight: Radius.circular(16),
       ),
-      child: SafeArea(
-        left: true,
-        top: false, // let it overlap AppBar area
-        bottom: true,
-        child: Padding(
-          padding: EdgeInsets.only(top: widget.topPadding),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  const SizedBox(width: 14),
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.accent.withOpacity(0.8),
-                          AppColors.accent.withOpacity(0.4),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.accent.withOpacity(0.3),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accent.withOpacity(0.4),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.auto_awesome_rounded,
-                      color: Colors.white,
-                      size: 22,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Robin',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFF0A0A0D).withOpacity(0.95),
+                const Color(0xFF0F0F12).withOpacity(0.95),
+                const Color(0xFF141418).withOpacity(0.95),
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            border: Border(
+              right: BorderSide(
+                color: Colors.white.withOpacity(0.12),
+                width: 1.5,
               ),
-              const SizedBox(height: 24),
-              // Main area: navigation list takes its intrinsic height; middle panel fills the remaining space
-              Expanded(
-                child: Column(
-                  children: [
-                    // Navigation items sized to content
-                    ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: widget.items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 6),
-                      itemBuilder: (context, index) {
-                        final item = widget.items[index];
-                        final selected = item.selected;
-                        return InkWell(
-                          onTap: () {
-                            item.onTap();
-                            _hideOverlay();
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 12,
-                              horizontal: 14,
-                            ),
-                            decoration: BoxDecoration(
-                              color:
-                                  selected
-                                      ? AppColors.accent.withOpacity(0.15)
-                                      : Colors.transparent,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color:
-                                    selected
-                                        ? AppColors.accent.withOpacity(0.3)
-                                        : Colors.transparent,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  item.icon,
-                                  color:
-                                      selected
-                                          ? AppColors.accent
-                                          : Colors.white.withOpacity(0.85),
-                                  size: 22,
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Text(
-                                    item.label,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.poppins(
-                                      color:
-                                          selected
-                                              ? Colors.white
-                                              : Colors.white.withOpacity(0.95),
-                                      fontSize: 14,
-                                      fontWeight:
-                                          selected
-                                              ? FontWeight.w600
-                                              : FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 20,
+                offset: const Offset(4, 0),
+              ),
+              BoxShadow(
+                color: AppColors.accent.withOpacity(0.08),
+                blurRadius: 16,
+                spreadRadius: 4,
+              ),
+            ],
+          ),
+          child: SafeArea(
+            left: true,
+            top: false, // let it overlap AppBar area
+            bottom: true,
+            child: Padding(
+              padding: EdgeInsets.only(top: widget.topPadding),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      const SizedBox(width: 14),
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFF6366F1),
+                              Color(0xFF8B5CF6),
+                              Color(0xFFEC4899),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        );
-                      },
-                    ),
-                    // Middle panel slot (e.g., history on Playground) fills remaining vertical space
-                    if (widget.middle != null) ...[
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.04),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.08),
-                            ),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.2),
+                            width: 1,
                           ),
-                          child: widget.middle!,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF6366F1).withOpacity(0.4),
+                              blurRadius: 16,
+                              spreadRadius: 2,
+                              offset: const Offset(0, 4),
+                            ),
+                            BoxShadow(
+                              color: const Color(0xFFEC4899).withOpacity(0.2),
+                              blurRadius: 20,
+                              spreadRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.auto_awesome_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Robin',
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 8),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 24),
+                  // Main area: navigation list takes its intrinsic height; middle panel fills the remaining space
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // Navigation items sized to content
+                        ListView.separated(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: widget.items.length,
+                          separatorBuilder:
+                              (_, __) => const SizedBox(height: 6),
+                          itemBuilder: (context, index) {
+                            final item = widget.items[index];
+                            final selected = item.selected;
+                            return InkWell(
+                              onTap: () {
+                                item.onTap();
+                                _hideOverlay();
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                  horizontal: 14,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                      selected
+                                          ? AppColors.accent.withOpacity(0.15)
+                                          : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(
+                                    color:
+                                        selected
+                                            ? AppColors.accent.withOpacity(0.4)
+                                            : Colors.transparent,
+                                    width: 1.5,
+                                  ),
+                                  boxShadow:
+                                      selected
+                                          ? [
+                                            BoxShadow(
+                                              color: AppColors.accent
+                                                  .withOpacity(0.2),
+                                              blurRadius: 12,
+                                              spreadRadius: 2,
+                                            ),
+                                          ]
+                                          : null,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      item.icon,
+                                      color:
+                                          selected
+                                              ? AppColors.accent
+                                              : Colors.white.withOpacity(0.85),
+                                      size: 22,
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Text(
+                                        item.label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.poppins(
+                                          color:
+                                              selected
+                                                  ? Colors.white
+                                                  : Colors.white.withOpacity(
+                                                    0.95,
+                                                  ),
+                                          fontSize: 14,
+                                          fontWeight:
+                                              selected
+                                                  ? FontWeight.w600
+                                                  : FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        // Middle panel slot (e.g., history on Playground) fills remaining vertical space
+                        if (widget.middle != null) ...[
+                          const SizedBox(height: 8),
+                          Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.06),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                  width: 1,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: widget.middle!,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Bottom profile
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: _buildExpandedUserProfile(),
+                  ),
+                  const SizedBox(height: 12),
+                ],
               ),
-              const SizedBox(height: 12),
-              // Bottom profile
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: _buildExpandedUserProfile(),
-              ),
-              const SizedBox(height: 12),
-            ],
+            ),
           ),
         ),
       ),
@@ -450,18 +732,27 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
 
         return Container(
           margin: const EdgeInsets.symmetric(horizontal: 8),
-          child: Tooltip(
+          child: _PremiumTooltip(
             message: 'Settings & Profile',
-            preferBelow: false,
             child: InkWell(
               onTap: _showSettingsModal,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(14),
               child: Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.15),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: CircleAvatar(
                   radius: 18,
@@ -520,13 +811,23 @@ class _PremiumSidebarState extends ConsumerState<PremiumSidebar>
           margin: const EdgeInsets.symmetric(horizontal: 12),
           child: InkWell(
             onTap: _showSettingsModal,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                color: Colors.white.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
               child: Row(
                 children: [

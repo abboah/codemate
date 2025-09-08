@@ -3,6 +3,7 @@ import 'package:codemate/providers/learn_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class SuggestedProjectsModal extends ConsumerStatefulWidget {
   final Topic topic;
@@ -10,10 +11,12 @@ class SuggestedProjectsModal extends ConsumerStatefulWidget {
   const SuggestedProjectsModal({super.key, required this.topic});
 
   @override
-  ConsumerState<SuggestedProjectsModal> createState() => _SuggestedProjectsModalState();
+  ConsumerState<SuggestedProjectsModal> createState() =>
+      _SuggestedProjectsModalState();
 }
 
-class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal> {
+class _SuggestedProjectsModalState
+    extends ConsumerState<SuggestedProjectsModal> {
   late PageController _pageController;
 
   @override
@@ -30,7 +33,9 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
 
   @override
   Widget build(BuildContext context) {
-    final projectsAsyncValue = ref.watch(suggestedProjectsProvider(widget.topic));
+    final projectsAsyncValue = ref.watch(
+      suggestedProjectsProvider(widget.topic),
+    );
 
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -136,8 +141,12 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                                         shape: BoxShape.circle,
                                         gradient: LinearGradient(
                                           colors: [
-                                            const Color(0xFF7F00FF).withOpacity(0.3),
-                                            const Color(0xFFE100FF).withOpacity(0.3),
+                                            const Color(
+                                              0xFF7F00FF,
+                                            ).withOpacity(0.3),
+                                            const Color(
+                                              0xFFE100FF,
+                                            ).withOpacity(0.3),
                                           ],
                                         ),
                                       ),
@@ -168,7 +177,7 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                                 ),
                               );
                             }
-                            
+
                             return Stack(
                               alignment: Alignment.center,
                               children: [
@@ -195,10 +204,16 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                                         ),
                                       ),
                                       child: IconButton(
-                                        icon: const Icon(Icons.arrow_back_ios, color: Colors.white, size: 16),
+                                        icon: const Icon(
+                                          Icons.arrow_back_ios,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
                                         onPressed: () {
                                           _pageController.previousPage(
-                                            duration: const Duration(milliseconds: 300),
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
                                             curve: Curves.easeInOut,
                                           );
                                         },
@@ -222,10 +237,16 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                                         ),
                                       ),
                                       child: IconButton(
-                                        icon: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 16),
+                                        icon: const Icon(
+                                          Icons.arrow_forward_ios,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
                                         onPressed: () {
                                           _pageController.nextPage(
-                                            duration: const Duration(milliseconds: 300),
+                                            duration: const Duration(
+                                              milliseconds: 300,
+                                            ),
                                             curve: Curves.easeInOut,
                                           );
                                         },
@@ -239,67 +260,50 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                               ],
                             );
                           },
-                          loading: () => const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(
-                                  color: Color(0xFFE100FF),
-                                  strokeWidth: 3,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Loading project ideas...',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          error: (err, stack) => Center(
-                            child: Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline,
-                                    color: Colors.redAccent,
-                                    size: 48,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Could not load project ideas',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.redAccent,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
+                          loading: () => const ModalSkeleton(),
+                          error:
+                              (err, stack) => Center(
+                                child: Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                      width: 1,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Please try again later',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 14,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.redAccent,
+                                        size: 48,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Could not load project ideas',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.redAccent,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Please try again later',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white.withOpacity(0.7),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
                         ),
                       ),
                     ],
@@ -320,11 +324,13 @@ class _SuggestedProjectsModalState extends ConsumerState<SuggestedProjectsModal>
                       ),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 20,
                       ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: IconButton.styleFrom(padding: EdgeInsets.zero),
                     ),
                   ),
                 ),
@@ -355,10 +361,7 @@ class _ProjectCard extends StatelessWidget {
           ],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -424,30 +427,38 @@ class _ProjectCard extends StatelessWidget {
             child: Wrap(
               spacing: 8.0,
               runSpacing: 8.0,
-              children: project.stack.map((tech) => Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF7F00FF).withOpacity(0.2),
-                      const Color(0xFFE100FF).withOpacity(0.2),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: const Color(0xFFE100FF).withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Text(
-                  tech,
-                  style: GoogleFonts.poppins(
-                    color: const Color(0xFFE100FF),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              )).toList(),
+              children:
+                  project.stack
+                      .map(
+                        (tech) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                const Color(0xFF7F00FF).withOpacity(0.2),
+                                const Color(0xFFE100FF).withOpacity(0.2),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFE100FF).withOpacity(0.3),
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            tech,
+                            style: GoogleFonts.poppins(
+                              color: const Color(0xFFE100FF),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
           ),
           const SizedBox(height: 24),
@@ -455,7 +466,10 @@ class _ProjectCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
@@ -467,7 +481,11 @@ class _ProjectCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.timer_outlined, color: Colors.white70, size: 16),
+                    const Icon(
+                      Icons.timer_outlined,
+                      color: Colors.white70,
+                      size: 16,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       '${project.estimatedTimeHours}h',
@@ -508,7 +526,10 @@ class _ProjectCard extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ).copyWith(
                   backgroundColor: MaterialStateProperty.resolveWith((states) {
                     if (states.contains(MaterialState.hovered)) {

@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:codemate/components/ide/terminal_view.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:codemate/widgets/fancy_loader.dart';
+import 'package:codemate/components/ide/live_preview_ide_view.dart';
 
 class IdePage extends ConsumerStatefulWidget {
   final String projectId;
@@ -22,13 +23,14 @@ class IdePage extends ConsumerStatefulWidget {
 }
 
 class _IdePageState extends ConsumerState<IdePage> {
-  final MultiSplitViewController _horizontalController = MultiSplitViewController(
-    areas: [
-      Area(flex: 2, min: 200), // File Tree ~20%
-      Area(flex: 5, min: 420), // Editor ~50%
-      Area(flex: 3, min: 360), // Agent Chat ~30%
-    ],
-  );
+  final MultiSplitViewController _horizontalController =
+      MultiSplitViewController(
+        areas: [
+          Area(flex: 2, min: 200), // File Tree ~20%
+          Area(flex: 5, min: 420), // Editor ~50%
+          Area(flex: 3, min: 360), // Agent Chat ~30%
+        ],
+      );
 
   String? _projectName;
   bool _isSavingName = false;
@@ -41,11 +43,12 @@ class _IdePageState extends ConsumerState<IdePage> {
 
   Future<void> _loadProjectName() async {
     try {
-      final res = await Supabase.instance.client
-          .from('projects')
-          .select('name')
-          .eq('id', widget.projectId)
-          .single();
+      final res =
+          await Supabase.instance.client
+              .from('projects')
+              .select('name')
+              .eq('id', widget.projectId)
+              .single();
       if (mounted) {
         setState(() => _projectName = (res['name'] as String?) ?? 'Project');
       }
@@ -61,63 +64,95 @@ class _IdePageState extends ConsumerState<IdePage> {
 
     final newName = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF121214),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(color: Colors.white.withOpacity(0.08)),
-        ),
-        titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
-        contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
-        actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-        title: Row(
-          children: [
-            Icon(Icons.drive_file_rename_outline, color: AppColors.accent, size: 20),
-            const SizedBox(width: 8),
-            Text('Rename Project', style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Give your project a memorable name.', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
-            const SizedBox(height: 10),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Enter new project name',
-                hintStyle: const TextStyle(color: Colors.white54),
-                filled: true,
-                fillColor: Colors.white.withOpacity(0.06),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: Colors.white.withOpacity(0.10)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(color: AppColors.accent),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              ),
-              onSubmitted: (_) => Navigator.of(ctx).pop(controller.text.trim()),
+      builder:
+          (ctx) => AlertDialog(
+            backgroundColor: const Color(0xFF121214),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: Colors.white.withOpacity(0.08)),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text('Cancel', style: GoogleFonts.poppins(color: Colors.white70)),
+            titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 0),
+            contentPadding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+            actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.drive_file_rename_outline,
+                  color: AppColors.accent,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Rename Project',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Give your project a memorable name.',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Enter new project name',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.06),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(
+                        color: Colors.white.withOpacity(0.10),
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide(color: AppColors.accent),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                  ),
+                  onSubmitted:
+                      (_) => Navigator.of(ctx).pop(controller.text.trim()),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.poppins(color: Colors.white70),
+                ),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.black,
+                ),
+                child: Text(
+                  'Save',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            style: FilledButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
-            child: Text('Save', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-          ),
-        ],
-      ),
     );
 
     if (newName == null || newName.isEmpty || newName == _projectName) return;
@@ -161,10 +196,50 @@ class _IdePageState extends ConsumerState<IdePage> {
         );
       },
       transitionBuilder: (ctx, anim, sec, child) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutCubic);
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
         return Opacity(
           opacity: curved.value,
-          child: Transform.scale(scale: 0.98 + 0.02 * curved.value, child: child),
+          child: Transform.scale(
+            scale: 0.98 + 0.02 * curved.value,
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 160),
+    );
+  }
+
+  void _openLivePreviewModal() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Live Preview',
+      barrierColor: Colors.black54,
+      pageBuilder: (ctx, a1, a2) {
+        return Stack(
+          children: [
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(color: Colors.black.withOpacity(0.2)),
+            ),
+            Center(child: LivePreviewIdeView(projectId: widget.projectId)),
+          ],
+        );
+      },
+      transitionBuilder: (ctx, anim, sec, child) {
+        final curved = CurvedAnimation(
+          parent: anim,
+          curve: Curves.easeOutCubic,
+        );
+        return Opacity(
+          opacity: curved.value,
+          child: Transform.scale(
+            scale: 0.98 + 0.02 * curved.value,
+            child: child,
+          ),
         );
       },
       transitionDuration: const Duration(milliseconds: 160),
@@ -183,7 +258,10 @@ class _IdePageState extends ConsumerState<IdePage> {
         ),
         title: Row(
           children: [
-                Icon(Icons.widgets_outlined, color: AppColors.accent.withOpacity(0.8)),
+            Icon(
+              Icons.widgets_outlined,
+              color: AppColors.accent.withOpacity(0.8),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Row(
@@ -208,9 +286,18 @@ class _IdePageState extends ConsumerState<IdePage> {
                       borderRadius: BorderRadius.circular(6),
                       child: Padding(
                         padding: const EdgeInsets.all(6.0),
-                        child: _isSavingName
-                            ? const SizedBox(width: 16, height: 16, child: WaveLoader(size: 16))
-                            : const Icon(Icons.edit_outlined, size: 18, color: Colors.white70),
+                        child:
+                            _isSavingName
+                                ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: WaveLoader(size: 16),
+                                )
+                                : const Icon(
+                                  Icons.edit_outlined,
+                                  size: 18,
+                                  color: Colors.white70,
+                                ),
                       ),
                     ),
                   ),
@@ -230,7 +317,22 @@ class _IdePageState extends ConsumerState<IdePage> {
             style: TextButton.styleFrom(
               foregroundColor: Colors.white70,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: _openLivePreviewModal,
+            icon: const Icon(Icons.play_circle_outline, size: 18),
+            label: const Text('Live Preview'),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white70,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -241,7 +343,7 @@ class _IdePageState extends ConsumerState<IdePage> {
           dividerThickness: 3,
           dividerPainter: DividerPainters.grooved1(
             color: const Color(0xFF0F0F0F),
-                highlightedColor: AppColors.accent.withOpacity(0.4),
+            highlightedColor: AppColors.accent.withOpacity(0.4),
           ),
         ),
         child: MultiSplitView(
@@ -253,8 +355,15 @@ class _IdePageState extends ConsumerState<IdePage> {
                   title: 'Explorer',
                   trailing: IconButton(
                     tooltip: 'Refresh Files',
-                    icon: const Icon(Icons.refresh, size: 20, color: Colors.white70),
-                    onPressed: () => ref.invalidate(projectFilesProvider(widget.projectId)),
+                    icon: const Icon(
+                      Icons.refresh,
+                      size: 20,
+                      color: Colors.white70,
+                    ),
+                    onPressed:
+                        () => ref.invalidate(
+                          projectFilesProvider(widget.projectId),
+                        ),
                   ),
                   child: FileTreeView(projectId: widget.projectId),
                 );
@@ -314,7 +423,9 @@ class _PaneContainer extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.05),
-                border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.08))),
+                border: Border(
+                  bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -332,9 +443,7 @@ class _PaneContainer extends StatelessWidget {
                 ],
               ),
             ),
-            Expanded(
-              child: child,
-            ),
+            Expanded(child: child),
           ],
         ),
       ),

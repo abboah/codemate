@@ -23,7 +23,8 @@ serve(async (req) => {
   const geminiApiKey = (globalThis as any).Deno?.env.get("GEMINI_API_KEY_3");
     if (!geminiApiKey) throw new Error("GEMINI_API_KEY_3 is not set.");
 
-    const { prompt, history, chatId, model: requestedModel, includeThoughts, attachments } = await req.json();
+  const reqBody: any = await req.json();
+  const { prompt, history, chatId, model: requestedModel, includeThoughts, attachments, isSpecial, faceText } = reqBody;
 
     const ai = new GoogleGenAI({ apiKey: geminiApiKey });
     const supabase = createClient(
@@ -1002,12 +1003,14 @@ serve(async (req) => {
 
       // Upload attachments (if any) to storage, then persist user message
       const sanitizedAttachments = await processAttachmentsIfAny(Array.isArray(attachments) ? attachments : []);
+      const isSpecial = (typeof (reqBody as any)?.isSpecial === 'boolean') ? !!(reqBody as any).isSpecial : false;
       await supabase.from('playground_chat_messages').insert({
         chat_id: effectiveChatId,
         sender: 'user',
         message_type: 'text',
-        content: String(prompt ?? ''),
+        content: (isSpecial ? String(faceText ?? '') : String(prompt ?? '')),
         attached_files: sanitizedAttachments.length ? sanitizedAttachments : null,
+        is_special: !!isSpecial,
       });
 
       // Compose model contents with last 4 messages from DB (including tool_results, excluding thoughts)
@@ -1015,15 +1018,16 @@ serve(async (req) => {
       try {
         const { data: histRows } = await supabase
           .from('playground_chat_messages')
-          .select('sender, content, tool_results, sent_at')
+          .select('sender, content, tool_results, sent_at, is_special')
           .eq('chat_id', effectiveChatId)
           .order('sent_at', { ascending: false })
           .limit(4);
         const prior = (histRows ?? []).slice().reverse();
         for (const m of prior) {
           const role = (m.sender === 'user') ? 'user' : 'model';
+          const isSpecialHist = (m as any)?.is_special === true;
           const contentText = String(m.content ?? '');
-          if (contentText) contents.push({ role, parts: [{ text: contentText }] });
+          if (!isSpecialHist && contentText) contents.push({ role, parts: [{ text: contentText }] });
           const tr = (m.tool_results as any)?.events;
           if (Array.isArray(tr) && tr.length > 0) {
             const summary = JSON.stringify({ tool_results: tr });
@@ -1037,7 +1041,7 @@ serve(async (req) => {
         contents.push({ role: 'user', parts: [{ text: `Attached files:\n${list}` }] });
       }
 
-      const createdArtifactIds: string[] = [];
+  const createdArtifactIds: string[] = [];
       while (true) {
         const systemInstruction = await buildSystemInstruction(effectiveChatId);
         const result = await ai.models.generateContent({
@@ -1078,7 +1082,7 @@ serve(async (req) => {
       }
     }
     const wantsStream = (req.headers.get('accept')?.includes('application/x-ndjson')) || (req.headers.get('x-stream') === 'true');
-    if (wantsStream) {
+  if (wantsStream) {
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
@@ -1109,26 +1113,29 @@ serve(async (req) => {
 
             // Upload attachments (if any) to storage, then persist user message
             const sanitizedAttachments = await processAttachmentsIfAny(Array.isArray(attachments) ? attachments : []);
+            const isSpecial = (typeof (reqBody as any)?.isSpecial === 'boolean') ? !!(reqBody as any).isSpecial : false;
             await supabase.from('playground_chat_messages').insert({
               chat_id: effectiveChatId,
               sender: 'user',
               message_type: 'text',
-              content: String(prompt ?? ''),
+              content: (isSpecial ? String(faceText ?? '') : String(prompt ?? '')),
               attached_files: sanitizedAttachments.length ? sanitizedAttachments : null,
+              is_special: !!isSpecial,
             });
             const contents: any[] = [];
             try {
               const { data: histRows } = await supabase
                 .from('playground_chat_messages')
-                .select('sender, content, tool_results, sent_at')
+                .select('sender, content, tool_results, sent_at, is_special')
                 .eq('chat_id', effectiveChatId)
                 .order('sent_at', { ascending: false })
                 .limit(3);
               const prior = (histRows ?? []).slice().reverse();
               for (const m of prior) {
                 const role = (m.sender === 'user') ? 'user' : 'model';
+                const isSpecialHist = (m as any)?.is_special === true;
                 const contentText = String(m.content ?? '');
-                if (contentText) contents.push({ role, parts: [{ text: contentText }] });
+                if (!isSpecialHist && contentText) contents.push({ role, parts: [{ text: contentText }] });
                 const tr = (m.tool_results as any)?.events;
                 if (Array.isArray(tr) && tr.length > 0) {
                   const summary = JSON.stringify({ tool_results: tr });

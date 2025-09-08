@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:codemate/providers/learn_provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class FunFactModal extends ConsumerStatefulWidget {
   final Topic topic;
@@ -89,7 +90,11 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.lightbulb_rounded, color: Colors.white, size: 24),
+                          child: const Icon(
+                            Icons.lightbulb_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -133,7 +138,9 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
                             ],
                           ),
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.white.withOpacity(0.06)),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.06),
+                          ),
                         ),
                         child: factsAsyncValue.when(
                           data: (facts) {
@@ -183,8 +190,12 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
                                           shape: BoxShape.circle,
                                           gradient: LinearGradient(
                                             colors: [
-                                              const Color(0xFFFC466B).withOpacity(0.3),
-                                              const Color(0xFF3F5EFB).withOpacity(0.3),
+                                              const Color(
+                                                0xFFFC466B,
+                                              ).withOpacity(0.3),
+                                              const Color(
+                                                0xFF3F5EFB,
+                                              ).withOpacity(0.3),
                                             ],
                                           ),
                                         ),
@@ -216,102 +227,116 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
                               },
                             );
                           },
-                          loading: () => const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFC466B)),
+                          loading: () => const ModalSkeleton(),
+                          error:
+                              (err, stack) => Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      size: 48,
+                                      color: Colors.redAccent.withOpacity(0.7),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Oops! Something went wrong',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.redAccent,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Please try again later',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Loading fascinating facts...',
-                                  style: TextStyle(color: Colors.white70),
-                                ),
-                              ],
-                            ),
-                          ),
-                          error: (err, stack) => Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.error_outline,
-                                  size: 48,
-                                  color: Colors.redAccent.withOpacity(0.7),
-                                ),
-                                const SizedBox(height: 16),
-                                Text(
-                                  'Oops! Something went wrong',
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.redAccent,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Please try again later',
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.white.withOpacity(0.7),
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                              ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
                     // Navigation controls
                     factsAsyncValue.maybeWhen(
-                      data: (facts) => facts.length > 1
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.white.withOpacity(0.08)),
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.arrow_back_ios, color: Colors.white70, size: 18),
-                                    onPressed: () {
-                                      _pageController.previousPage(
-                                        duration: const Duration(milliseconds: 300),
-                                        curve: Curves.easeInOut,
-                                      );
-                                    },
-                                  ),
-                                ),
-                                Text(
-                                  '${facts.length} fun facts',
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.white.withOpacity(0.6),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.06),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: Colors.white.withOpacity(0.08)),
-                                  ),
-                                  child: IconButton(
-                                    icon: const Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 18),
-                                    onPressed: () {
-                                      _pageController.nextPage(
-                                        duration: const Duration(milliseconds: 300),
-                                        curve: Curves.easeInOut,
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const SizedBox.shrink(),
+                      data:
+                          (facts) =>
+                              facts.length > 1
+                                  ? Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.06),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.08,
+                                            ),
+                                          ),
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.arrow_back_ios,
+                                            color: Colors.white70,
+                                            size: 18,
+                                          ),
+                                          onPressed: () {
+                                            _pageController.previousPage(
+                                              duration: const Duration(
+                                                milliseconds: 300,
+                                              ),
+                                              curve: Curves.easeInOut,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      Text(
+                                        '${facts.length} fun facts',
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white.withOpacity(0.6),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.06),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.08,
+                                            ),
+                                          ),
+                                        ),
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.arrow_forward_ios,
+                                            color: Colors.white70,
+                                            size: 18,
+                                          ),
+                                          onPressed: () {
+                                            _pageController.nextPage(
+                                              duration: const Duration(
+                                                milliseconds: 300,
+                                              ),
+                                              curve: Curves.easeInOut,
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                  : const SizedBox.shrink(),
                       orElse: () => const SizedBox.shrink(),
                     ),
                   ],
@@ -326,7 +351,11 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
                       border: Border.all(color: Colors.white.withOpacity(0.08)),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white70, size: 20),
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white70,
+                        size: 20,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
@@ -339,3 +368,5 @@ class _FunFactModalState extends ConsumerState<FunFactModal> {
     );
   }
 }
+
+// Uses shared ModalSkeleton from fancy_loader.dart

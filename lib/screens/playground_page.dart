@@ -1,4 +1,6 @@
 import 'dart:ui';
+import 'dart:async';
+import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:codemate/themes/colors.dart';
@@ -20,6 +22,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 // Conditional import: on web use HtmlElementView-based preview, otherwise stub
 import 'package:codemate/widgets/canvas_html_preview_stub.dart'
     if (dart.library.html) 'package:codemate/widgets/canvas_html_preview_web.dart';
@@ -27,6 +30,8 @@ import 'package:codemate/utils/download_helper.dart' as download_helper;
 import 'package:flutter_highlight/flutter_highlight.dart';
 import 'package:codemate/components/ide/diff_preview.dart';
 import 'package:codemate/components/ide/diff_side_by_side.dart';
+import 'package:codemate/widgets/template_prompt_pills.dart';
+import 'package:codemate/supabase_config.dart';
 
 class PlaygroundPage extends ConsumerStatefulWidget {
   const PlaygroundPage({super.key});
@@ -47,6 +52,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   // Scroll controller for conversation and scroll-to-bottom button
   final ScrollController _conversationScrollController = ScrollController();
   bool _showScrollToBottom = false;
+  // Auto-scroll scheduling flag to avoid spamming animations while streaming
+  bool _autoScrollScheduled = false;
   // Throttle state updates from scroll listener
   int _lastScrollCheckMs = 0;
   // Canvas view mode: 'code' or 'preview'
@@ -57,6 +64,14 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   static const double _minPaneRatio = 0.2; // 20%
   static const double _maxPaneRatio = 0.8; // 80%
   bool _canvasFullscreen = false;
+
+  // Magic overlay state (for special prompt streaming)
+  bool _magicActive = false; // a special prompt is in-flight
+  bool _showMagicOverlay = false; // overlay visibility
+  bool _loadingFacts = false;
+  List<String> _magicFacts = const [];
+  int _magicFactIndex = 0;
+  Timer? _magicTicker;
 
   @override
   void initState() {
@@ -86,6 +101,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     _controller.dispose();
     _focusNode.dispose();
     _conversationScrollController.dispose();
+    _stopMagicOverlay(immediate: true);
     super.dispose();
   }
 
@@ -117,6 +133,24 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _scheduleAutoScrollToBottom() {
+    if (_autoScrollScheduled) return;
+    _autoScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoScrollScheduled = false;
+      if (!mounted) return;
+      if (!_conversationScrollController.hasClients) return;
+      final pos = _conversationScrollController.position;
+      final target = pos.maxScrollExtent;
+      // Use a short animation to keep it smooth
+      _conversationScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.linear,
+      );
+    });
   }
 
   Future<void> _showFileSwitcherMenu(
@@ -838,9 +872,472 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     }
   }
 
+  // Magic overlay lifecycle
+  void _beginMagicOverlay() {
+    if (_magicActive) return; // already active
+    _magicActive = true;
+    _showMagicOverlay = true;
+    _loadingFacts = true;
+    _magicFacts = const [];
+    _magicFactIndex = 0;
+    if (mounted) setState(() {});
+    () async {
+      // Initial fetch
+      try {
+        final facts = await _fetchProgrammingFacts(count: 8);
+        if (!mounted) return;
+        setState(() {
+          _magicFacts = facts.isNotEmpty ? facts : _fallbackFacts;
+          _loadingFacts = false;
+          _magicFactIndex = 0;
+        });
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _magicFacts = _fallbackFacts;
+          _loadingFacts = false;
+          _magicFactIndex = 0;
+        });
+      }
+      // Poll backend every 5s to refresh facts (as requested)
+      _magicTicker?.cancel();
+      _magicTicker = Timer.periodic(const Duration(seconds: 5), (_) async {
+        if (!mounted || !_showMagicOverlay) return;
+        try {
+          final refreshed = await _fetchProgrammingFacts(count: 8);
+          if (!mounted || !_showMagicOverlay) return;
+          if (refreshed.isNotEmpty) {
+            setState(() {
+              _magicFacts = refreshed;
+              _magicFactIndex = (_magicFactIndex + 1) % _magicFacts.length;
+            });
+          }
+        } catch (_) {
+          // keep existing facts on error
+        }
+      });
+    }();
+  }
+
+  void _stopMagicOverlay({bool immediate = false}) {
+    _magicActive = false;
+    _magicTicker?.cancel();
+    _magicTicker = null;
+    if (!mounted) return;
+    if (immediate) {
+      _showMagicOverlay = false;
+      setState(() {});
+      return;
+    }
+    setState(() {
+      _showMagicOverlay = false;
+    });
+  }
+
+  Future<List<String>> _fetchProgrammingFacts({int count = 8}) async {
+    try {
+      final origin = getFunctionsOrigin();
+      final uri = Uri.parse("$origin/fact-generator?count=$count");
+      final resp = await http.get(uri, headers: {'Accept': 'application/json'});
+      if (resp.statusCode >= 200 && resp.statusCode < 300) {
+        final Map<String, dynamic> json = jsonDecode(resp.body);
+        final list = (json['facts'] as List?)?.cast<dynamic>() ?? const [];
+        final facts =
+            list
+                .map((e) => e.toString())
+                .map((s) => s.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+        return facts;
+      }
+    } catch (_) {}
+    return _fallbackFacts;
+  }
+
+  static const List<String> _fallbackFacts = [
+    'The first computer bug was a real moth found in 1947.',
+    'Python is named after Monty Python, not the snake.',
+    'CSS stands for Cascading Style Sheets—order matters!',
+    'JavaScript was created in just 10 days in 1995.',
+    'In Git, HEAD is just a pointer to your current branch.',
+    'SQL is declarative: you say what you want, not how to get it.',
+    'HTTP/2 multiplexes multiple streams over one connection.',
+    'Rust’s borrow checker prevents data races at compile time.',
+  ];
+
+  Widget _buildMagicOverlay(BuildContext context) {
+    final screen = MediaQuery.of(context).size;
+    // Slightly narrower modal for balanced design
+    final cardWidth = (screen.width * 0.56).clamp(640.0, 980.0);
+    final fact =
+        (_magicFacts.isNotEmpty)
+            ? _magicFacts[_magicFactIndex % _magicFacts.length]
+            : 'Fetching a cool programming fact…';
+    return Positioned.fill(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: RadialGradient(
+              center: Alignment.center,
+              radius: 0.8,
+              colors: [
+                Colors.black.withOpacity(0.75),
+                Colors.black.withOpacity(0.85),
+                Colors.black.withOpacity(0.95),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: Stack(
+            children: [
+              // Center wider card with side-by-side content
+              Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 240),
+                  curve: Curves.easeOutCubic,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 22,
+                    vertical: 18,
+                  ),
+                  width: cardWidth,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.08),
+                        Colors.white.withOpacity(0.04),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.15),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.4),
+                        blurRadius: 32,
+                        offset: const Offset(0, 16),
+                        spreadRadius: 2,
+                      ),
+                      BoxShadow(
+                        color: const Color(0xFF7F5AF0).withOpacity(0.15),
+                        blurRadius: 24,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const SweepGradient(
+                                      colors: [
+                                        Color(0xFF7F5AF0),
+                                        Color(0xFF9D4EDD),
+                                        Color(0xFF23A6D5),
+                                        Color(0xFF12D8FA),
+                                        Color(0xFF7F5AF0),
+                                      ],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF7F5AF0,
+                                        ).withOpacity(0.4),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF23A6D5,
+                                        ).withOpacity(0.3),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.auto_awesome,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Sit back and let Robin do the work…',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _stopMagicOverlay(),
+                            icon: const Icon(
+                              Icons.visibility,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                            label: Text(
+                              'See the action',
+                              style: GoogleFonts.poppins(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              backgroundColor: Colors.white.withOpacity(0.06),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: BorderSide(
+                                  color: Colors.white.withOpacity(0.1),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      LayoutBuilder(
+                        builder: (ctx, c) {
+                          final isNarrow = c.maxWidth < 840;
+                          final leftContent = Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withOpacity(0.06),
+                                  Colors.white.withOpacity(0.03),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Relax while we build',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  'Robin is busy crafting your request. You can close this to watch the progress anytime.',
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white.withOpacity(0.8),
+                                    height: 1.6,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                Container(
+                                  height: 6,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF7F5AF0),
+                                        Color(0xFF9D4EDD),
+                                        Color(0xFF23A6D5),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFF7F5AF0,
+                                        ).withOpacity(0.3),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          final rightContent = Container(
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withOpacity(0.06),
+                                  Colors.white.withOpacity(0.03),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFFFC107),
+                                            Color(0xFFFF9800),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(
+                                              0xFFFFC107,
+                                            ).withOpacity(0.4),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Icon(
+                                        Icons.lightbulb,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      'Did you know?',
+                                      style: GoogleFonts.poppins(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 18,
+                                        letterSpacing: -0.3,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 12),
+                                AnimatedSwitcher(
+                                  duration: const Duration(milliseconds: 300),
+                                  switchInCurve: Curves.easeOutCubic,
+                                  switchOutCurve: Curves.easeInCubic,
+                                  child: Text(
+                                    _loadingFacts
+                                        ? 'Fetching a cool programming fact…'
+                                        : fact,
+                                    key: ValueKey(
+                                      _loadingFacts ? 'loading' : fact,
+                                    ),
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white.withOpacity(0.85),
+                                      height: 1.6,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (isNarrow) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                leftContent,
+                                const SizedBox(height: 12),
+                                rightContent,
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Expanded(child: leftContent),
+                              const SizedBox(width: 12),
+                              Expanded(child: rightContent),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playgroundProvider);
+    // Auto-scroll while streaming to keep viewport pinned to bottom.
+    // Note: ref.listen must be used inside build for ConsumerState widgets.
+    ref.listen(playgroundProvider, (previous, next) {
+      if (next.streaming ||
+          (previous?.streaming == true && next.streaming == false)) {
+        _scheduleAutoScrollToBottom();
+      }
+      if ((previous?.messages.length ?? 0) != next.messages.length &&
+          next.streaming) {
+        _scheduleAutoScrollToBottom();
+      }
+      // Open overlay when streaming begins (any message processing)
+      if ((previous?.streaming != true) && next.streaming == true) {
+        _beginMagicOverlay();
+      }
+      // Close magic overlay automatically when streaming completes
+      if ((previous?.streaming == true) && next.streaming == false) {
+        if (_showMagicOverlay) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _stopMagicOverlay(immediate: true);
+          });
+        }
+      }
+    });
     // Reset view mode when the selected canvas file changes
     if (state.selectedCanvasPath != _lastCanvasPath) {
       _lastCanvasPath = state.selectedCanvasPath;
@@ -990,41 +1487,62 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               ),
           child: Row(
             children: [
-              PremiumSidebar(
-                items: [
-                  PremiumSidebarItem(
-                    icon: Icons.home,
-                    label: 'Home',
-                    onTap: () => Navigator.of(context).pop(),
-                    selected: false,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.play_arrow_rounded,
-                    label: 'Playground',
-                    onTap: () {},
-                    selected: true,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.construction_rounded,
-                    label: 'Build',
-                    onTap:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const BuildPage()),
-                        ),
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.school_rounded,
-                    label: 'Learn',
-                    onTap:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LearnPage()),
-                        ),
-                  ),
-                ],
-                topPadding: 16,
-                middle: _PlaygroundHistoryPanel(ref: ref),
+              // Sidebar quick slide-in for immersive entry
+              TweenAnimationBuilder<double>(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                tween: Tween(begin: 0.0, end: 1.0),
+                builder: (context, t, child) {
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset((1 - t) * -12, 0),
+                      child: child,
+                    ),
+                  );
+                },
+                child: PremiumSidebar(
+                  items: [
+                    PremiumSidebarItem(
+                      icon: Icons.home,
+                      label: 'Home',
+                      onTap: () => Navigator.of(context).pop(),
+                      selected: false,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Playground',
+                      onTap: () {},
+                      selected: true,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.construction_rounded,
+                      label: 'Build',
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BuildPage(),
+                            ),
+                          ),
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.school_rounded,
+                      label: 'Learn',
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LearnPage(),
+                            ),
+                          ),
+                    ),
+                  ],
+                  topPadding: 16,
+                  gapBelowTopIcon: 8, // reduce unusual gap in Playground
+                  expandTopIconHitBox: true, // make whole area clickable
+                  middle: _PlaygroundHistoryPanel(ref: ref),
+                ),
               ),
               // Only the main content area is pushed below the AppBar; the sidebar touches the very top
               Expanded(
@@ -1042,15 +1560,22 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               flex: 2,
                               child: Stack(
                                 children: [
+                                  // Ambient particles behind the content
+                                  _buildAnimatedParticles(),
                                   _buildGlow(),
                                   AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 280),
                                     switchInCurve: Curves.easeOutCubic,
                                     switchOutCurve: Curves.easeInCubic,
-                                    child:
+                                    child: Stack(
+                                      children: [
                                         !hasMessages
                                             ? _buildLanding(context)
                                             : _buildConversation(context),
+                                        if (_showMagicOverlay)
+                                          _buildMagicOverlay(context),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -1076,6 +1601,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                 width: leftW,
                                 child: Stack(
                                   children: [
+                                    // Ambient particles behind the content
+                                    _buildAnimatedParticles(),
                                     _buildGlow(),
                                     AnimatedSwitcher(
                                       duration: const Duration(
@@ -1083,10 +1610,15 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                       ),
                                       switchInCurve: Curves.easeOutCubic,
                                       switchOutCurve: Curves.easeInCubic,
-                                      child:
+                                      child: Stack(
+                                        children: [
                                           !hasMessages
                                               ? _buildLanding(context)
                                               : _buildConversation(context),
+                                          if (_showMagicOverlay)
+                                            _buildMagicOverlay(context),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1801,9 +2333,69 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               ),
             ),
           ),
+          // Quick-start templates (placed below the message bar)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: inputWidth.clamp(360, 720)),
+            child: TemplatePromptPills(
+              templates: const [
+                TemplatePrompt(
+                  face: 'Build a Todo App',
+                  actual:
+                      'Create a simple Todo application in a single HTML file with inline CSS and JS. Features: add, toggle, delete items; persist to localStorage; clean, responsive UI; keyboard-friendly. Provide concise explanation.',
+                ),
+                TemplatePrompt(
+                  face: 'Markdown to HTML previewer',
+                  actual:
+                      'Build a single-file Markdown previewer (HTML + inline CSS/JS). Left textarea, right live preview. Use a tiny embedded parser or simple heuristics if no library. Style for readability.',
+                ),
+                TemplatePrompt(
+                  face: 'Build Flight Sim with Three.js',
+                  actual:
+                      'You are in Playground Canvas mode. Build an interactive Flight Simulator using Three.js in a single self-contained HTML file with inline CSS and JS. Include basic controls: pitch, roll, yaw via keyboard, a skybox/gradient background, and a simple plane model (primitive shapes acceptable), with vegetation & clouds. Keep code readable and comment key parts. After implementing, suggest next enhancements briefly.',
+                ),
+                TemplatePrompt(
+                  face: "Build a Snake game",
+                  actual:
+                      'Create a single HTML file with inline CSS/JS for a Retro-style Snake game. Features: classic gameplay, responsive design, high score system, and simple controls. Use placeholder graphics as needed.',
+                ),
+              ],
+              onSelect: (t) {
+                _sendSpecialPrompt(face: t.face, actual: t.actual);
+              },
+              padding: const EdgeInsets.only(top: 8),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  // Sends a special prompt: user sees face text in the UI bubble styled specially,
+  // but the backend only receives the actual detailed prompt. We tag locally for UI.
+  Future<void> _sendSpecialPrompt({
+    required String face,
+    required String actual,
+  }) async {
+    // Show face prompt in input for a tick to reuse existing send flow UX
+    _controller.text = face;
+    // Append a visual-only tag to the displayed message content; provider/backend will get `actual` only
+    final display = '[SPECIAL PROMPT]\n$face';
+    final attachments = List<Map<String, dynamic>>.from(_attachments);
+    setState(() {
+      _attachments.clear();
+    });
+    // Show magic overlay during special streaming
+    _beginMagicOverlay();
+    // Optimistically add a special-colored user bubble by sending via provider with a special flag
+    await ref
+        .read(playgroundProvider)
+        .sendSpecial(
+          faceText: display,
+          actualPrompt: actual,
+          attachments: attachments,
+          model: 'gemini-2.5-flash',
+        );
+    _controller.clear();
   }
 
   Widget _buildConversation(BuildContext context) {
@@ -1836,6 +2428,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                         !isUser &&
                         index == state.messages.length - 1 &&
                         state.streaming;
+                    final isSpecial = m.isSpecial == true;
                     // removed unused isLastAI local variable
                     return RepaintBoundary(
                       child: Align(
@@ -1858,7 +2451,9 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               decoration: BoxDecoration(
                                 color:
                                     isUser
-                                        ? AppColors.darkerAccent
+                                        ? (isSpecial
+                                            ? Colors.purple.withOpacity(0.35)
+                                            : AppColors.darkerAccent)
                                         : Colors.transparent,
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(18),
@@ -2040,7 +2635,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                     const ThinkingDotsLoader(size: 56)
                                   else
                                     _SegmentedMarkdown(
-                                      data: m.content,
+                                      data: _displayContentForMessage(m),
                                       inlineEvents:
                                           (!isUser &&
                                                   (m.toolResults?['events']
@@ -2062,12 +2657,17 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                         color: Colors.white,
                                         fontSize: 15,
                                         height: 2.2,
+                                        fontWeight:
+                                            isUser
+                                                ? FontWeight.w400
+                                                : FontWeight.w600,
                                       ),
                                     ),
-                                  if (!isUser) ...[
+                                  if (!isUser && !isStreamingLastAI) ...[
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
+                                        // Copy appears only after stream completes
                                         IconButton(
                                           tooltip: 'Copy',
                                           onPressed:
@@ -2082,56 +2682,52 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        if (!isStreamingLastAI) ...[
-                                          IconButton(
-                                            tooltip: 'Like',
-                                            onPressed:
-                                                () => ref
-                                                    .read(playgroundProvider)
-                                                    .saveMessageFeedback(
-                                                      messageId: m.id,
-                                                      kind:
-                                                          m.feedback == 'like'
-                                                              ? null
-                                                              : 'like',
-                                                    ),
-                                            icon: Icon(
-                                              m.feedback == 'like'
-                                                  ? Icons.thumb_up_alt
-                                                  : Icons.thumb_up_alt_outlined,
-                                              color:
-                                                  m.feedback == 'like'
-                                                      ? AppColors.accent
-                                                      : Colors.white70,
-                                              size: 18,
-                                            ),
+                                        IconButton(
+                                          tooltip: 'Like',
+                                          onPressed:
+                                              () => ref
+                                                  .read(playgroundProvider)
+                                                  .saveMessageFeedback(
+                                                    messageId: m.id,
+                                                    kind:
+                                                        m.feedback == 'like'
+                                                            ? null
+                                                            : 'like',
+                                                  ),
+                                          icon: Icon(
+                                            m.feedback == 'like'
+                                                ? Icons.thumb_up_alt
+                                                : Icons.thumb_up_alt_outlined,
+                                            color:
+                                                m.feedback == 'like'
+                                                    ? AppColors.accent
+                                                    : Colors.white70,
+                                            size: 18,
                                           ),
-                                          IconButton(
-                                            tooltip: 'Dislike',
-                                            onPressed:
-                                                () => ref
-                                                    .read(playgroundProvider)
-                                                    .saveMessageFeedback(
-                                                      messageId: m.id,
-                                                      kind:
-                                                          m.feedback ==
-                                                                  'dislike'
-                                                              ? null
-                                                              : 'dislike',
-                                                    ),
-                                            icon: Icon(
-                                              m.feedback == 'dislike'
-                                                  ? Icons.thumb_down_alt
-                                                  : Icons
-                                                      .thumb_down_alt_outlined,
-                                              color:
-                                                  m.feedback == 'dislike'
-                                                      ? AppColors.accent
-                                                      : Colors.white70,
-                                              size: 18,
-                                            ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Dislike',
+                                          onPressed:
+                                              () => ref
+                                                  .read(playgroundProvider)
+                                                  .saveMessageFeedback(
+                                                    messageId: m.id,
+                                                    kind:
+                                                        m.feedback == 'dislike'
+                                                            ? null
+                                                            : 'dislike',
+                                                  ),
+                                          icon: Icon(
+                                            m.feedback == 'dislike'
+                                                ? Icons.thumb_down_alt
+                                                : Icons.thumb_down_alt_outlined,
+                                            color:
+                                                m.feedback == 'dislike'
+                                                    ? AppColors.accent
+                                                    : Colors.white70,
+                                            size: 18,
                                           ),
-                                        ],
+                                        ),
                                       ],
                                     ),
                                   ],
@@ -2184,6 +2780,22 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     );
   }
 
+  String _displayContentForMessage(dynamic m) {
+    // If this is a special prompt bubble we created, strip the tag for display
+    try {
+      final isSpecial = (m as dynamic).isSpecial == true;
+      final content = (m as dynamic).content as String? ?? '';
+      if (isSpecial) {
+        if (content.startsWith('[SPECIAL PROMPT]')) {
+          return content.replaceFirst('[SPECIAL PROMPT]', '').trimLeft();
+        }
+      }
+      return content;
+    } catch (_) {
+      return (m as dynamic).content as String? ?? '';
+    }
+  }
+
   Widget _buildGlow() {
     return Stack(
       children: [
@@ -2214,6 +2826,51 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(colors: [color, Colors.transparent]),
+      ),
+    );
+  }
+
+  // Subtle ambient particles similar to Home; purely visual
+  Widget _buildAnimatedParticles() {
+    return IgnorePointer(
+      child: Stack(
+        children: List.generate(12, (index) {
+          final rnd = Random(index);
+          final size = 2.0 + rnd.nextDouble() * 4;
+          final opacity = 0.08 + rnd.nextDouble() * 0.25;
+          final int ms = 2600 + rnd.nextInt(3200);
+          final screen = MediaQuery.of(context).size;
+          final left = rnd.nextDouble() * screen.width;
+          final top = rnd.nextDouble() * screen.height;
+          return Positioned(
+            left: left,
+            top: top,
+            child: AnimatedOpacity(
+              duration: Duration(milliseconds: ms),
+              opacity: opacity,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.accent.withOpacity(opacity),
+                      Colors.transparent,
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accent.withOpacity(opacity * 0.4),
+                      blurRadius: size * 2,
+                      spreadRadius: size * 0.5,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -3364,15 +4021,30 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.15),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7F5AF0).withOpacity(0.08),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3520,39 +4192,69 @@ class _InputBar extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: (sending || uploading) ? null : onPickFiles,
-                        icon: const Icon(
-                          Icons.add_circle_outline,
-                          color: Colors.white70,
+                      // Enhanced attach button
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white.withOpacity(0.08),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 1,
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed:
+                              (sending || uploading) ? null : onPickFiles,
+                          icon: const Icon(
+                            Icons.attach_file_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
+                          tooltip: 'Attach files',
                         ),
                       ),
                     ],
                   ),
-                  ElevatedButton(
-                    onPressed: (sending || uploading) ? null : onSend,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  // Enhanced send button with gradient + wave loader
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      padding: const EdgeInsets.all(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child:
-                        (sending || uploading)
-                            ? Row(
-                              children: const [
-                                SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: MiniWave(size: 22),
-                                ),
-                              ],
-                            )
-                            : const Icon(
-                              Icons.arrow_upward,
-                              color: Colors.white,
-                            ),
+                    child: ElevatedButton(
+                      onPressed: (sending || uploading) ? null : onSend,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                      child:
+                          (sending || uploading)
+                              ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: MiniWave(size: 22, color: Colors.white),
+                              )
+                              : const Icon(
+                                Icons.rocket_launch,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                    ),
                   ),
                 ],
               ),

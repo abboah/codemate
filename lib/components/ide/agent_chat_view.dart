@@ -28,6 +28,7 @@ import 'package:codemate/widgets/playground_code_block.dart';
 // Duplicate import removed
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:codemate/components/ide/artifact_mention_overlay.dart';
 
 class AgentChatView extends ConsumerStatefulWidget {
   final String projectId;
@@ -40,6 +41,7 @@ class AgentChatView extends ConsumerStatefulWidget {
 class _AgentChatViewState extends ConsumerState<AgentChatView> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final ScrollController _chatScrollController = ScrollController();
   String? _activeChatId;
   String _selectedModel = 'gemini-2.5-flash';
   bool _askMode = false; // false = Agent, true = Ask
@@ -47,9 +49,15 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
   List<AgentChatMessage> _localMessages = [];
   bool _isSendingNewChat = false;
   bool _isUploading = false; // show uploading indicator during send
+  bool _autoScrollScheduled = false; // throttle auto-scroll scheduling
+  bool _wasStreaming = false; // track stream-on -> stream-off transition
 
   // Composer image hover preview via global overlay
   OverlayEntry? _imageHoverOverlay;
+
+  // Hashtag (#) artifact mentions state
+  bool _showArtifactMentions = false;
+  String _artifactQuery = '';
 
   void _removeImageHoverOverlay() {
     try {
@@ -69,7 +77,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     final renderObject = pillContext.findRenderObject();
     if (renderObject is! RenderBox) return;
     final topLeft = renderObject.localToGlobal(Offset.zero);
-    final size = renderObject.size;
+    // size is not needed since we always anchor above the pill now
     final screen = MediaQuery.of(context).size;
 
     const previewW = 220.0;
@@ -77,8 +85,9 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     double left = topLeft.dx;
     if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
     if (left < 8) left = 8;
-    double top = topLeft.dy - previewH - 8; // try above first
-    if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
+    // Always position above the pill with a comfortable gap
+    double top = topLeft.dy - previewH - 12;
+    if (top < 8) top = 8; // clamp to viewport
 
     _imageHoverOverlay = OverlayEntry(
       builder:
@@ -121,6 +130,124 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     overlay.insert(_imageHoverOverlay!);
   }
 
+  Future<void> _showArtifactHoverOverlayForPill(
+    BuildContext pillContext,
+    Map<String, dynamic> artifactRow,
+  ) async {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return Future.value();
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return Future.value();
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 380.0;
+    double left = topLeft.dx;
+    const gap = 16.0; // extra space above the pill
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+
+    // Enrich artifact data if missing
+    Map<String, dynamic> row = Map<String, dynamic>.from(artifactRow);
+    if (row['data'] == null) {
+      final id = (row['artifact_id'] ?? row['id'])?.toString();
+      if (id != null && id.isNotEmpty) {
+        try {
+          final supa = Supabase.instance.client;
+          final res =
+              await supa
+                  .from('agent_artifacts')
+                  .select('id, artifact_type, data, key')
+                  .eq('id', id)
+                  .maybeSingle();
+          if (res is Map<String, dynamic>) {
+            row.addAll(res);
+          }
+        } catch (_) {
+          // ignore fetch errors; we'll fallback to minimal payload
+        }
+      }
+    }
+
+    String name;
+    switch ((row['artifact_type'] as String?) ?? '') {
+      case 'project_card_preview':
+        name = 'project_card_preview';
+        break;
+      case 'todo_list':
+        name = 'todo_list_create';
+        break;
+      default:
+        name = 'artifact_read';
+    }
+    dynamic payload;
+    final type = (row['artifact_type'] as String?) ?? '';
+    final data = row['data'];
+    switch (type) {
+      case 'project_card_preview':
+        payload = {'status': 'success', 'card': data};
+        break;
+      case 'todo_list':
+        payload = {
+          'status': 'success',
+          'todo': data,
+          'artifact_id': row['id'] ?? row['artifact_id'],
+        };
+        break;
+      default:
+        payload = {
+          'status': 'success',
+          'data': data,
+          'id': row['artifact_id'] ?? row['id'],
+        };
+    }
+
+    _imageHoverOverlay = OverlayEntry(
+      builder:
+          (_) => Positioned(
+            left: left,
+            // Always show above the pill so it never overlaps it
+            top: null,
+            bottom: screen.height - topLeft.dy + gap,
+            width: previewW,
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight: screen.height * 0.7,
+                  minWidth: previewW,
+                  maxWidth: previewW,
+                ),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1B1B1B),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.white.withOpacity(0.10)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.4),
+                      blurRadius: 12,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  physics: const ClampingScrollPhysics(),
+                  child: AgentToolEventPreviews(
+                    events: [
+                      {'name': name, 'result': payload},
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+    return Future.value();
+  }
+
   // Attachments state: list of maps { path, content, file_id }
   List<Map<String, dynamic>> _attachedFiles = [];
 
@@ -141,6 +268,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     _controller.removeListener(_handleTextChangedForMentions);
     _controller.dispose();
     _inputFocusNode.dispose();
+    _chatScrollController.dispose();
     super.dispose();
   }
 
@@ -895,27 +1023,56 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     final text = _controller.text;
     final selection = _controller.selection;
     if (!selection.isValid) {
-      if (_showMentions) setState(() => _showMentions = false);
+      bool changed = false;
+      if (_showMentions) {
+        _showMentions = false;
+        changed = true;
+      }
+      if (_showArtifactMentions) {
+        _showArtifactMentions = false;
+        changed = true;
+      }
+      if (changed) setState(() {});
       return;
     }
     final cursor = selection.baseOffset;
     final beforeCursor = cursor > 0 ? text.substring(0, cursor) : '';
+
+    // Handle @ file mentions
     final atIndex = beforeCursor.lastIndexOf('@');
-    if (atIndex == -1) {
-      if (_showMentions) setState(() => _showMentions = false);
-      return;
-    }
-    // Ensure there is no whitespace between @ and cursor
-    final mentionCandidate = beforeCursor.substring(atIndex);
-    final valid = RegExp(r'^@[^\s@]*$');
-    if (valid.hasMatch(mentionCandidate)) {
-      final query = mentionCandidate.substring(1);
-      setState(() {
-        _mentionQuery = query;
-        _showMentions = true;
-      });
+    if (atIndex != -1) {
+      final mentionCandidate = beforeCursor.substring(atIndex);
+      final valid = RegExp(r'^@[^\s@]*$');
+      if (valid.hasMatch(mentionCandidate)) {
+        final query = mentionCandidate.substring(1);
+        setState(() {
+          _mentionQuery = query;
+          _showMentions = true;
+        });
+      } else {
+        if (_showMentions) setState(() => _showMentions = false);
+      }
     } else {
       if (_showMentions) setState(() => _showMentions = false);
+    }
+
+    // Handle # artifact mentions
+    final hashIndex = beforeCursor.lastIndexOf('#');
+    if (hashIndex != -1) {
+      final hashCandidate = beforeCursor.substring(hashIndex);
+      final hashValid = RegExp(r'^#[^\s#]*$');
+      if (hashValid.hasMatch(hashCandidate)) {
+        final query = hashCandidate.substring(1);
+        setState(() {
+          _artifactQuery = query;
+          _showArtifactMentions = true;
+        });
+      } else {
+        if (_showArtifactMentions)
+          setState(() => _showArtifactMentions = false);
+      }
+    } else {
+      if (_showArtifactMentions) setState(() => _showArtifactMentions = false);
     }
   }
 
@@ -1084,12 +1241,61 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     });
   }
 
+  void _insertArtifactMentionAndAttach(Map<String, dynamic> artifactRow) {
+    // Replace current #query with #<label>
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final cursor = selection.baseOffset;
+    final beforeCursor = cursor > 0 ? text.substring(0, cursor) : '';
+    final hashIndex = beforeCursor.lastIndexOf('#');
+    String label;
+    final key = artifactRow['key'] as String?;
+    if (key != null && key.isNotEmpty) {
+      label = key;
+    } else {
+      final t = (artifactRow['artifact_type'] as String?) ?? 'artifact';
+      final id = (artifactRow['id']?.toString() ?? '');
+      final short = id.isNotEmpty ? id.substring(0, id.length.clamp(0, 6)) : '';
+      label = short.isNotEmpty ? '$t#$short' : t;
+    }
+    if (hashIndex != -1) {
+      final mentionText = '#$label';
+      final newText =
+          text.substring(0, hashIndex) + mentionText + text.substring(cursor);
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(
+          offset: hashIndex + mentionText.length,
+        ),
+      );
+    }
+    final attach = {
+      'artifact_id': artifactRow['id'],
+      'artifact_type': artifactRow['artifact_type'],
+      'key': artifactRow['key'],
+      'data': artifactRow['data'],
+      'name': (artifactRow['key'] as String?) ?? 'artifact',
+      'attached_via': '#',
+    };
+    setState(() {
+      _attachedFiles = [..._attachedFiles, attach];
+      _showArtifactMentions = false;
+      _artifactQuery = '';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isSending =
-        _isSendingNewChat ||
-        (_activeChatId != null &&
-            ref.watch(agentChatProvider(_activeChatId!)).isSending);
+    final bool providerIsSending =
+        _activeChatId != null &&
+        ref.watch(agentChatProvider(_activeChatId!)).isSending;
+    final bool isSending = _isSendingNewChat || providerIsSending;
+
+    // Auto-scroll while streaming, and once after it ends to settle
+    if (isSending || _wasStreaming) {
+      _scheduleAutoScrollToBottom(reverse: true);
+    }
+    _wasStreaming = isSending;
     final chatHistory = ref.watch(projectChatsProvider(widget.projectId));
     final projectFilesState = ref.watch(projectFilesProvider(widget.projectId));
 
@@ -1131,18 +1337,25 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                         return const Center(child: WaveLoader(size: 28));
                       }
                       return ListView.builder(
+                        controller: _chatScrollController,
                         padding: const EdgeInsets.all(16.0),
                         reverse: true,
                         itemCount: chatState.messages.length,
                         itemBuilder: (context, index) {
                           final messages = chatState.messages.reversed.toList();
                           final message = messages[index];
+                          final isLast = index == 0;
+                          final streamingThis =
+                              providerIsSending &&
+                              isLast &&
+                              message.sender == MessageSender.ai;
                           return Padding(
                             key: ValueKey(message.id),
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: AgentMessageBubble(
                               message: message,
-                              isLastMessage: index == 0,
+                              isLastMessage: isLast,
+                              isStreaming: streamingThis,
                               projectId: widget.projectId,
                             ),
                           );
@@ -1261,6 +1474,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       return _buildInitialView();
     }
     return ListView.builder(
+      controller: _chatScrollController,
       padding: const EdgeInsets.all(16.0),
       reverse: true,
       addAutomaticKeepAlives: false,
@@ -1277,12 +1491,33 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
             child: AgentMessageBubble(
               message: message,
               isLastMessage: index == 0,
+              isStreaming:
+                  _isSendingNewChat &&
+                  index == 0 &&
+                  message.sender == MessageSender.ai,
               projectId: widget.projectId,
             ),
           ),
         );
       },
     );
+  }
+
+  void _scheduleAutoScrollToBottom({bool reverse = false}) {
+    if (_autoScrollScheduled) return;
+    _autoScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoScrollScheduled = false;
+      if (!mounted) return;
+      if (!_chatScrollController.hasClients) return;
+      final pos = _chatScrollController.position;
+      final target = reverse ? pos.minScrollExtent : pos.maxScrollExtent;
+      _chatScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.linear,
+      );
+    });
   }
 
   Widget _buildInitialView() {
@@ -1406,13 +1641,20 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                                 final isUpload =
                                     f['bytes'] is Uint8List ||
                                     f['bucket_url'] != null;
+                                final isArtifact = f['artifact_id'] != null;
                                 final isImg = (f['type'] == 'img');
                                 final title =
-                                    hasPath
+                                    isArtifact
+                                        ? ((f['key'] as String?) ??
+                                            (f['artifact_type'] as String? ??
+                                                'artifact'))
+                                        : hasPath
                                         ? (f['path'] as String)
                                         : (f['name'] as String? ?? 'file');
                                 final icon =
-                                    hasPath
+                                    isArtifact
+                                        ? Icons.storage_rounded
+                                        : hasPath
                                         ? Icons.description_outlined
                                         : (isImg
                                             ? Icons.image_outlined
@@ -1485,6 +1727,22 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                                                     pillCtx,
                                                     f['bytes'] as Uint8List,
                                                   ),
+                                          onExit:
+                                              (_) => _removeImageHoverOverlay(),
+                                          child: pill,
+                                        ),
+                                  );
+                                }
+                                if (isArtifact) {
+                                  return Builder(
+                                    builder:
+                                        (pillCtx) => MouseRegion(
+                                          onEnter: (_) {
+                                            _showArtifactHoverOverlayForPill(
+                                              pillCtx,
+                                              f,
+                                            );
+                                          },
                                           onExit:
                                               (_) => _removeImageHoverOverlay(),
                                           child: pill,
@@ -1572,6 +1830,14 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                       },
                     ),
                   ),
+                // Hashtag-based artifact mentions overlay
+                ArtifactMentionOverlay(
+                  projectId: widget.projectId,
+                  chatId: _activeChatId,
+                  query: _artifactQuery,
+                  visible: _showArtifactMentions,
+                  onSelect: _insertArtifactMentionAndAttach,
+                ),
                 Shortcuts(
                   shortcuts: <LogicalKeySet, Intent>{
                     LogicalKeySet(LogicalKeyboardKey.enter):
@@ -1806,12 +2072,14 @@ class AgentMessageBubble extends ConsumerWidget {
   final AgentChatMessage message;
   final bool isLastMessage;
   final String projectId;
+  final bool isStreaming;
 
   const AgentMessageBubble({
     super.key,
     required this.message,
     required this.projectId,
     this.isLastMessage = false,
+    this.isStreaming = false,
   });
 
   @override
@@ -2300,7 +2568,7 @@ class AgentMessageBubble extends ConsumerWidget {
               ],
             ),
           ),
-          if (!isUser && isLastMessage)
+          if (!isUser && isLastMessage && !isStreaming)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 8),
               child: Row(

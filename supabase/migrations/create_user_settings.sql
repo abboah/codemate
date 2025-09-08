@@ -5,6 +5,20 @@ CREATE TABLE public.user_settings (
   user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
   theme TEXT NOT NULL DEFAULT 'dark' CHECK (theme IN ('light', 'dark')),
   notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  other_prefs JSONB NOT NULL DEFAULT jsonb_build_object(
+    'has_seen_home_screen', false,
+    'has_seen_playground_page', false,
+    'has_seen_build_page', false,
+    'has_seen_learn_page', false,
+    'has_seen_sidebar_tutorial', false,
+    'has_seen_brainstorm_modal', false,
+    'has_seen_describe_modal', false,
+    'has_seen_ide', false,
+    'has_seen_terminal', false,
+    'has_seen_canvas', false,
+    'has_seen_enrolled_courses_page', false,
+    'has_seen_topic_interaction_modal', false
+  ),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -44,8 +58,24 @@ BEGIN
   VALUES (NEW.id, NEW.email, username_var, full_name_var);
   
   -- Create a settings entry for the new user
-  INSERT INTO public.user_settings (user_id)
-  VALUES (NEW.id);
+  INSERT INTO public.user_settings (user_id, other_prefs)
+  VALUES (
+    NEW.id,
+    jsonb_build_object(
+      'has_seen_home_screen', false,
+      'has_seen_playground_page', false,
+      'has_seen_build_page', false,
+      'has_seen_learn_page', false,
+      'has_seen_sidebar_tutorial', false,
+      'has_seen_brainstorm_modal', false,
+      'has_seen_describe_modal', false,
+      'has_seen_ide', false,
+      'has_seen_terminal', false,
+      'has_seen_canvas', false,
+      'has_seen_enrolled_courses_page', false,
+      'has_seen_topic_interaction_modal', false
+    )
+  );
   
   RETURN NEW;
 END;

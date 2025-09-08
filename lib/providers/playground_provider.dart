@@ -17,6 +17,7 @@ class PlaygroundMessage {
   final Map<String, dynamic>? toolResults;
   final String? thoughts;
   final String? feedback; // 'like' | 'dislike' | null
+  final bool isSpecial; // special prompt sent by app (UI styling)
 
   PlaygroundMessage({
     required this.id,
@@ -27,6 +28,7 @@ class PlaygroundMessage {
     this.toolResults,
     this.thoughts,
     this.feedback,
+    this.isSpecial = false,
   });
 }
 
@@ -214,6 +216,8 @@ class PlaygroundState extends ChangeNotifier {
             toolResults: m['tool_results'] as Map<String, dynamic>?,
             thoughts: m['thoughts'] as String?,
             feedback: m['feedback'] as String?,
+            // Messages loaded from DB are not tagged special in UI by default
+            isSpecial: (m['is_special'] == true),
           ),
         ),
       );
@@ -262,6 +266,7 @@ class PlaygroundState extends ChangeNotifier {
         content: text,
         sentAt: DateTime.now(),
         attachments: attachments,
+        isSpecial: false,
       ),
     );
     messages.add(
@@ -452,6 +457,209 @@ class PlaygroundState extends ChangeNotifier {
               await fetchCanvasFiles();
             } catch (_) {}
             // Refresh artifacts list
+            try {
+              await fetchArtifacts();
+            } catch (_) {}
+            break;
+        }
+      }
+    } finally {
+      streaming = false;
+      sending = false;
+      notifyListeners();
+    }
+  }
+
+  // Special prompt path: show a tagged user bubble locally (purple style), but send only the actual prompt to backend/model.
+  Future<void> sendSpecial({
+    required String faceText,
+    required String actualPrompt,
+    required List<Map<String, dynamic>> attachments,
+    String model = 'gemini-2.5-flash',
+  }) async {
+    if (sending) return;
+    sending = true;
+    notifyListeners();
+
+    final aiId = UniqueKey().toString();
+    // Local user bubble with special styling
+    messages.add(
+      PlaygroundMessage(
+        id: UniqueKey().toString(),
+        sender: 'user',
+        content: faceText,
+        sentAt: DateTime.now(),
+        attachments: attachments,
+        isSpecial: true,
+      ),
+    );
+    messages.add(
+      PlaygroundMessage(
+        id: aiId,
+        sender: 'ai',
+        content: '',
+        sentAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+
+    try {
+      // Ensure a chat exists
+      if (chatId == null) {
+        final uid = _client.auth.currentUser?.id;
+        if (uid == null) {
+          throw Exception('Not authenticated');
+        }
+        final title = await _generateChatTitle(actualPrompt);
+        final newChat =
+            await _client
+                .from('playground_chats')
+                .insert({'user_id': uid, 'title': title})
+                .select('id, title')
+                .single();
+        chatId = newChat['id'] as String?;
+        chatTitle = newChat['title'] as String? ?? title;
+        try {
+          await fetchChats();
+        } catch (_) {}
+      }
+
+      final functionsHost = getFunctionsOrigin();
+      final url = Uri.parse("$functionsHost/playground-handler");
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/x-ndjson',
+        'Authorization':
+            _client.auth.currentSession?.accessToken != null
+                ? 'Bearer ${_client.auth.currentSession!.accessToken}'
+                : '',
+        'x-client-info': 'supabase-dart',
+      };
+      final body = jsonEncode({
+        'prompt': actualPrompt, // important: send only actual prompt
+        'history': [],
+        'chatId': chatId,
+        'model': model,
+        'attachments': attachments,
+        'includeThoughts': true,
+        'isSpecial': true,
+        'faceText': faceText,
+      });
+
+      final ndjson = NdjsonClient(url: url, headers: headers, body: body);
+      streaming = true;
+      notifyListeners();
+
+      String textSoFar = '';
+      String thoughtsSoFar = '';
+      final toolEvents = <Map<String, dynamic>>[];
+
+      await for (final evt in ndjson.stream()) {
+        switch (evt['type']) {
+          case 'start':
+            if (evt['chatId'] is String) chatId = evt['chatId'];
+            if (evt['title'] is String) chatTitle = evt['title'];
+            notifyListeners();
+            break;
+          case 'text':
+            textSoFar += (evt['delta'] as String? ?? '');
+            final i = messages.indexWhere((m) => m.id == aiId);
+            if (i != -1) {
+              messages[i] = PlaygroundMessage(
+                id: aiId,
+                sender: 'ai',
+                content: textSoFar,
+                sentAt: messages[i].sentAt,
+                thoughts: messages[i].thoughts,
+                toolResults: messages[i].toolResults,
+              );
+              notifyListeners();
+            }
+            break;
+          case 'thought':
+            thoughtsSoFar += (evt['delta'] as String? ?? '');
+            final ti = messages.indexWhere((m) => m.id == aiId);
+            if (ti != -1) {
+              messages[ti] = PlaygroundMessage(
+                id: aiId,
+                sender: 'ai',
+                content: messages[ti].content,
+                thoughts: thoughtsSoFar,
+                toolResults: messages[ti].toolResults,
+                sentAt: messages[ti].sentAt,
+              );
+              notifyListeners();
+            }
+            break;
+          case 'tool_in_progress':
+            final id = evt['id'];
+            final name = evt['name'];
+            toolEvents.add({
+              'id': id,
+              'name': name,
+              'result': {'status': 'in_progress'},
+            });
+            final ip = messages.indexWhere((m) => m.id == aiId);
+            if (ip != -1) {
+              messages[ip] = PlaygroundMessage(
+                id: aiId,
+                sender: 'ai',
+                content: messages[ip].content,
+                thoughts: messages[ip].thoughts,
+                toolResults: {
+                  'events': List<Map<String, dynamic>>.from(toolEvents),
+                },
+                sentAt: messages[ip].sentAt,
+              );
+              notifyListeners();
+            }
+            break;
+          case 'tool_result':
+            final id = evt['id'];
+            final name = evt['name'];
+            final res = evt['result'];
+            final idx = toolEvents.indexWhere((e) => e['id'] == id);
+            if (idx != -1) {
+              toolEvents[idx] = {'id': id, 'name': name, 'result': res};
+            } else {
+              toolEvents.add({'id': id, 'name': name, 'result': res});
+            }
+            final ip2 = messages.indexWhere((m) => m.id == aiId);
+            if (ip2 != -1) {
+              messages[ip2] = PlaygroundMessage(
+                id: aiId,
+                sender: 'ai',
+                content: messages[ip2].content,
+                thoughts: messages[ip2].thoughts,
+                toolResults: {
+                  'events': List<Map<String, dynamic>>.from(toolEvents),
+                },
+                sentAt: messages[ip2].sentAt,
+              );
+              notifyListeners();
+            }
+            break;
+          case 'error':
+            error = evt['message'] as String?;
+            break;
+          case 'end':
+            final i = messages.indexWhere((m) => m.id == aiId);
+            if (i != -1) {
+              messages[i] = PlaygroundMessage(
+                id: aiId,
+                sender: 'ai',
+                content: textSoFar,
+                thoughts: thoughtsSoFar.isNotEmpty ? thoughtsSoFar : null,
+                toolResults: {'events': toolEvents},
+                sentAt: messages[i].sentAt,
+              );
+            }
+            try {
+              await fetchChats();
+            } catch (_) {}
+            try {
+              await fetchCanvasFiles();
+            } catch (_) {}
             try {
               await fetchArtifacts();
             } catch (_) {}

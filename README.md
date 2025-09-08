@@ -86,10 +86,26 @@ flutter run -d chrome
 ```
 
 ## Usage Notes
-- Start in IDE page; open Terminal from the app bar.
-- Use the plus menu in chat to attach code or upload files (upload placeholder currently).
-- In Ask mode, the agent will not modify files and will use only `read_file`.
-- Click a diff in chat to open the file and view the full diff in the editor pane.
+
+## Live Preview (WebContainers) Setup
+
+WebContainers require cross-origin isolation. To run locally or deploy, ensure COOP/COEP headers are set.
+
+### Local testing
+
+1. Build the Flutter web app.
+2. Serve the built `build/web` with a server that sends headers:
+
+- Cross-Origin-Opener-Policy: same-origin
+- Cross-Origin-Embedder-Policy: require-corp
+- Cross-Origin-Resource-Policy: cross-origin
+- X-Content-Type-Options: nosniff
+
+3. Optionally use `node devserver.js 8080 build/web` (provided in repo).
+
+### Deploying
+
+Configure your host to send the headers above for all files. For Netlify/Cloudflare Pages, include `web/_headers` in the output or add rules in UI.
 
 ## Learn Feature (Planned)
 See `plan/learn_page_plan.md`.
