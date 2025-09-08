@@ -28,6 +28,7 @@ import 'package:codemate/widgets/playground_code_block.dart';
 // Duplicate import removed
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:codemate/components/ide/artifact_mention_overlay.dart';
 
 class AgentChatView extends ConsumerStatefulWidget {
   final String projectId;
@@ -54,6 +55,10 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
   // Composer image hover preview via global overlay
   OverlayEntry? _imageHoverOverlay;
 
+  // Hashtag (#) artifact mentions state
+  bool _showArtifactMentions = false;
+  String _artifactQuery = '';
+
   void _removeImageHoverOverlay() {
     try {
       _imageHoverOverlay?.remove();
@@ -72,16 +77,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     final renderObject = pillContext.findRenderObject();
     if (renderObject is! RenderBox) return;
     final topLeft = renderObject.localToGlobal(Offset.zero);
-    final size = renderObject.size;
+  // size is not needed since we always anchor above the pill now
     final screen = MediaQuery.of(context).size;
 
-    const previewW = 220.0;
-    const previewH = 160.0;
-    double left = topLeft.dx;
-    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
-    if (left < 8) left = 8;
-    double top = topLeft.dy - previewH - 8; // try above first
-    if (top < 8) top = topLeft.dy + size.height + 8; // otherwise below
+  const previewW = 220.0;
+  const previewH = 160.0;
+  double left = topLeft.dx;
+  if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+  if (left < 8) left = 8;
+  // Always position above the pill with a comfortable gap
+  double top = topLeft.dy - previewH - 12;
+  if (top < 8) top = 8; // clamp to viewport
 
     _imageHoverOverlay = OverlayEntry(
       builder:
@@ -122,6 +128,114 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
           ),
     );
     overlay.insert(_imageHoverOverlay!);
+  }
+
+  Future<void> _showArtifactHoverOverlayForPill(
+    BuildContext pillContext,
+    Map<String, dynamic> artifactRow,
+  ) async {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.maybeOf(context);
+  if (overlay == null) return Future.value();
+
+    final renderObject = pillContext.findRenderObject();
+  if (renderObject is! RenderBox) return Future.value();
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final screen = MediaQuery.of(context).size;
+
+  const previewW = 380.0;
+  double left = topLeft.dx;
+  const gap = 16.0; // extra space above the pill
+  if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+
+    // Enrich artifact data if missing
+    Map<String, dynamic> row = Map<String, dynamic>.from(artifactRow);
+    if (row['data'] == null) {
+      final id = (row['artifact_id'] ?? row['id'])?.toString();
+      if (id != null && id.isNotEmpty) {
+        try {
+          final supa = Supabase.instance.client;
+          final res = await supa
+              .from('agent_artifacts')
+              .select('id, artifact_type, data, key')
+              .eq('id', id)
+              .maybeSingle();
+          if (res is Map<String, dynamic>) {
+            row.addAll(res);
+          }
+        } catch (_) {
+          // ignore fetch errors; we'll fallback to minimal payload
+        }
+      }
+    }
+
+    String name;
+    switch ((row['artifact_type'] as String?) ?? '') {
+      case 'project_card_preview':
+        name = 'project_card_preview';
+        break;
+      case 'todo_list':
+        name = 'todo_list_create';
+        break;
+      default:
+        name = 'artifact_read';
+    }
+    dynamic payload;
+    final type = (row['artifact_type'] as String?) ?? '';
+    final data = row['data'];
+    switch (type) {
+      case 'project_card_preview':
+        payload = {'status': 'success', 'card': data};
+        break;
+      case 'todo_list':
+        payload = {'status': 'success', 'todo': data, 'artifact_id': row['id'] ?? row['artifact_id']};
+        break;
+      default:
+        payload = {'status': 'success', 'data': data, 'id': row['artifact_id'] ?? row['id']};
+    }
+
+    _imageHoverOverlay = OverlayEntry(
+      builder: (_) => Positioned(
+        left: left,
+        // Always show above the pill so it never overlaps it
+        top: null,
+        bottom: screen.height - topLeft.dy + gap,
+        width: previewW,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: screen.height * 0.7,
+              minWidth: previewW,
+              maxWidth: previewW,
+            ),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B1B1B),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: AgentToolEventPreviews(
+                events: [
+                  {'name': name, 'result': payload},
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+    return Future.value();
   }
 
   // Attachments state: list of maps { path, content, file_id }
@@ -899,30 +1013,57 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     final text = _controller.text;
     final selection = _controller.selection;
     if (!selection.isValid) {
-      if (_showMentions) setState(() => _showMentions = false);
+      bool changed = false;
+      if (_showMentions) {
+        _showMentions = false;
+        changed = true;
+      }
+      if (_showArtifactMentions) {
+        _showArtifactMentions = false;
+        changed = true;
+      }
+      if (changed) setState(() {});
       return;
     }
     final cursor = selection.baseOffset;
     final beforeCursor = cursor > 0 ? text.substring(0, cursor) : '';
+
+    // Handle @ file mentions
     final atIndex = beforeCursor.lastIndexOf('@');
-    if (atIndex == -1) {
-      if (_showMentions) setState(() => _showMentions = false);
-      return;
-    }
-    // Ensure there is no whitespace between @ and cursor
-    final mentionCandidate = beforeCursor.substring(atIndex);
-    final valid = RegExp(r'^@[^\s@]*$');
-    if (valid.hasMatch(mentionCandidate)) {
-      final query = mentionCandidate.substring(1);
-      setState(() {
-        _mentionQuery = query;
-        _showMentions = true;
-      });
+    if (atIndex != -1) {
+      final mentionCandidate = beforeCursor.substring(atIndex);
+      final valid = RegExp(r'^@[^\s@]*$');
+      if (valid.hasMatch(mentionCandidate)) {
+        final query = mentionCandidate.substring(1);
+        setState(() {
+          _mentionQuery = query;
+          _showMentions = true;
+        });
+      } else {
+        if (_showMentions) setState(() => _showMentions = false);
+      }
     } else {
       if (_showMentions) setState(() => _showMentions = false);
     }
-  }
 
+    // Handle # artifact mentions
+    final hashIndex = beforeCursor.lastIndexOf('#');
+    if (hashIndex != -1) {
+      final hashCandidate = beforeCursor.substring(hashIndex);
+      final hashValid = RegExp(r'^#[^\s#]*$');
+      if (hashValid.hasMatch(hashCandidate)) {
+        final query = hashCandidate.substring(1);
+        setState(() {
+          _artifactQuery = query;
+          _showArtifactMentions = true;
+        });
+      } else {
+        if (_showArtifactMentions) setState(() => _showArtifactMentions = false);
+      }
+    } else {
+      if (_showArtifactMentions) setState(() => _showArtifactMentions = false);
+    }
+  }
   void _addAttachments(List<Map<String, dynamic>> files) {
     final byPath = {for (final f in _attachedFiles) f['path']: f};
     for (final f in files) {
@@ -1085,6 +1226,46 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     setState(() {
       _showMentions = false;
       _mentionQuery = '';
+    });
+  }
+
+  void _insertArtifactMentionAndAttach(Map<String, dynamic> artifactRow) {
+    // Replace current #query with #<label>
+    final text = _controller.text;
+    final selection = _controller.selection;
+    final cursor = selection.baseOffset;
+    final beforeCursor = cursor > 0 ? text.substring(0, cursor) : '';
+    final hashIndex = beforeCursor.lastIndexOf('#');
+    String label;
+    final key = artifactRow['key'] as String?;
+    if (key != null && key.isNotEmpty) {
+      label = key;
+    } else {
+      final t = (artifactRow['artifact_type'] as String?) ?? 'artifact';
+      final id = (artifactRow['id']?.toString() ?? '');
+      final short = id.isNotEmpty ? id.substring(0, id.length.clamp(0, 6)) : '';
+      label = short.isNotEmpty ? '$t#$short' : t;
+    }
+    if (hashIndex != -1) {
+      final mentionText = '#$label';
+      final newText = text.substring(0, hashIndex) + mentionText + text.substring(cursor);
+      _controller.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: hashIndex + mentionText.length),
+      );
+    }
+    final attach = {
+      'artifact_id': artifactRow['id'],
+      'artifact_type': artifactRow['artifact_type'],
+      'key': artifactRow['key'],
+      'data': artifactRow['data'],
+      'name': (artifactRow['key'] as String?) ?? 'artifact',
+      'attached_via': '#',
+    };
+    setState(() {
+      _attachedFiles = [..._attachedFiles, attach];
+      _showArtifactMentions = false;
+      _artifactQuery = '';
     });
   }
 
@@ -1440,22 +1621,27 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                           runSpacing: 6,
                           children:
                               _attachedFiles.map((f) {
-                                final hasPath =
-                                    f['path'] is String; // code attachment
+                final hasPath =
+                  f['path'] is String; // code attachment
                                 final isUpload =
                                     f['bytes'] is Uint8List ||
                                     f['bucket_url'] != null;
+                final isArtifact = f['artifact_id'] != null;
                                 final isImg = (f['type'] == 'img');
-                                final title =
-                                    hasPath
-                                        ? (f['path'] as String)
-                                        : (f['name'] as String? ?? 'file');
+                final title = isArtifact
+                  ? ((f['key'] as String?) ??
+                    (f['artifact_type'] as String? ?? 'artifact'))
+                  : hasPath
+                    ? (f['path'] as String)
+                    : (f['name'] as String? ?? 'file');
                                 final icon =
-                                    hasPath
-                                        ? Icons.description_outlined
-                                        : (isImg
-                                            ? Icons.image_outlined
-                                            : Icons.insert_drive_file_outlined);
+                  isArtifact
+                    ? Icons.storage_rounded
+                    : hasPath
+                      ? Icons.description_outlined
+                      : (isImg
+                        ? Icons.image_outlined
+                        : Icons.insert_drive_file_outlined);
                                 final pill = Container(
                                   decoration: BoxDecoration(
                                     color: Colors.white.withOpacity(0.08),
@@ -1512,9 +1698,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                                     ],
                                   ),
                                 );
-                                if (isUpload &&
-                                    isImg &&
-                                    f['bytes'] is Uint8List) {
+                                if (isUpload && isImg && f['bytes'] is Uint8List) {
                                   return Builder(
                                     builder:
                                         (pillCtx) => MouseRegion(
@@ -1528,6 +1712,17 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                                               (_) => _removeImageHoverOverlay(),
                                           child: pill,
                                         ),
+                                  );
+                                }
+                                if (isArtifact) {
+                                  return Builder(
+                                    builder: (pillCtx) => MouseRegion(
+                                      onEnter: (_) {
+                                        _showArtifactHoverOverlayForPill(pillCtx, f);
+                                      },
+                                      onExit: (_) => _removeImageHoverOverlay(),
+                                      child: pill,
+                                    ),
                                   );
                                 }
                                 return pill;
@@ -1611,6 +1806,14 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                       },
                     ),
                   ),
+                // Hashtag-based artifact mentions overlay
+                ArtifactMentionOverlay(
+                  projectId: widget.projectId,
+                  chatId: _activeChatId,
+                  query: _artifactQuery,
+                  visible: _showArtifactMentions,
+                  onSelect: _insertArtifactMentionAndAttach,
+                ),
                 Shortcuts(
                   shortcuts: <LogicalKeySet, Intent>{
                     LogicalKeySet(LogicalKeyboardKey.enter):

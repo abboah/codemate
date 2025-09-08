@@ -27,7 +27,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
   WebViewController? _webViewController;
 
   void _appendLog(String s) {
-    setState(() => _logs.add(s));
+    setState(() => _logs.add('[${DateTime.now().toIso8601String().substring(11, 19)}] $s'));
   }
 
   Future<void> _start() async {
@@ -62,16 +62,37 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
       setState(() => _installing = true);
       try {
         final install = _svc.spawn('npm', const ['install']);
-        install.stdout.listen(
-          (chunk) => _appendLog(chunk),
-          onError: (e) {
-            _appendLog('install stdout error: $e');
-          },
-        );
+        install.stdout.listen((chunk) => _appendLog('[INSTALL] $chunk'), onError: (e) {
+          _appendLog('[INSTALL] stdout error: $e');
+        });
+        install.stderr.listen((chunk) => _appendLog('[INSTALL ERROR] $chunk'), onError: (e) {
+          _appendLog('[INSTALL] stderr error: $e');
+        });
         final code = await install.exitCode;
         _appendLog('npm install exited with code $code');
+        
+        if (code != 0) {
+          _appendLog('Install failed. This may happen if:');
+          _appendLog('- No package.json exists in the project');
+          _appendLog('- Network issues preventing package downloads');
+          _appendLog('- WebContainer environment restrictions');
+          if (mounted) {
+            setState(() {
+              _installing = false;
+              _running = false;
+            });
+          }
+          return;
+        }
       } catch (e) {
         _appendLog('npm install failed: $e');
+        if (mounted) {
+          setState(() {
+            _installing = false;
+            _running = false;
+          });
+        }
+        return;
       } finally {
         if (mounted) setState(() => _installing = false);
       }
@@ -80,14 +101,17 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
       setState(() => _running = true);
       try {
         final dev = _svc.spawn('npm', const ['run', 'dev']);
-        dev.stdout.listen(
-          (chunk) => _appendLog(chunk),
-          onError: (e) {
-            _appendLog('dev stdout error: $e');
-          },
-        );
+        dev.stdout.listen((chunk) => _appendLog('[DEV] $chunk'), onError: (e) {
+          _appendLog('[DEV] stdout error: $e');
+        });
+        dev.stderr.listen((chunk) => _appendLog('[DEV ERROR] $chunk'), onError: (e) {
+          _appendLog('[DEV] stderr error: $e');
+        });
       } catch (e) {
         _appendLog('npm run dev failed: $e');
+        if (mounted) {
+          setState(() => _running = false);
+        }
       }
 
       _svc.onServerReady((port, url) {
@@ -96,10 +120,9 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
         setState(() => _previewUrl = url);
         // Initialize or update WebView
         if (_webViewController == null) {
-          final c =
-              WebViewController()
-                ..setJavaScriptMode(JavaScriptMode.unrestricted)
-                ..loadRequest(Uri.parse(url));
+          final c = WebViewController()
+            ..setJavaScriptMode(JavaScriptMode.unrestricted)
+            ..loadRequest(Uri.parse(url));
           setState(() => _webViewController = c);
         } else {
           _webViewController!.loadRequest(Uri.parse(url));
@@ -125,12 +148,10 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
         final name = parts[i];
         if (isFile) {
           node[name] = {
-            'file': {'contents': content},
+            'file': {'contents': content}
           };
         } else {
-          node =
-              (node[name] ??= {'directory': <String, dynamic>{}})['directory']
-                  as Map<String, dynamic>;
+          node = (node[name] ??= {'directory': <String, dynamic>{}})['directory'] as Map<String, dynamic>;
         }
       }
     }
@@ -164,31 +185,19 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.04),
-                border: Border(
-                  bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
-                ),
+                border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.08))),
               ),
               child: Row(
                 children: [
                   Icon(Icons.play_circle_fill, color: AppColors.accent),
                   const SizedBox(width: 8),
-                  Text(
-                    'LIVE PREVIEW',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
+                  Text('LIVE PREVIEW', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12, letterSpacing: 0.6)),
                   const Spacer(),
                   TextButton.icon(
-                    onPressed:
-                        (_booting || _installing || _running) ? null : _start,
+                    onPressed: (_booting || _installing || _running) ? null : _start,
                     icon: const Icon(Icons.play_arrow),
                     label: const Text('Run'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white70,
-                    ),
+                    style: TextButton.styleFrom(foregroundColor: Colors.white70),
                   ),
                 ],
               ),
@@ -200,31 +209,22 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                     flex: 5,
                     child: Container(
                       decoration: BoxDecoration(
-                        border: Border(
-                          right: BorderSide(
-                            color: Colors.white.withOpacity(0.08),
-                          ),
-                        ),
+                        border: Border(right: BorderSide(color: Colors.white.withOpacity(0.08))),
                       ),
-                      child:
-                          _previewUrl == null
-                              ? Center(
-                                child: Text(
-                                  _installing
-                                      ? 'Installing dependencies…'
-                                      : _booting
-                                      ? 'Booting WebContainer…'
-                                      : 'Click Run to start preview',
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                              )
-                              : (_webViewController == null
-                                  ? const Center(
-                                    child: CircularProgressIndicator(),
-                                  )
-                                  : WebViewWidget(
-                                    controller: _webViewController!,
-                                  )),
+                      child: _previewUrl == null
+                          ? Center(
+                              child: Text(
+                                _installing
+                                    ? 'Installing dependencies…'
+                                    : _booting
+                                        ? 'Booting WebContainer…'
+                                        : 'Click Run to start preview',
+                                style: const TextStyle(color: Colors.white70),
+                              ),
+                            )
+                          : (_webViewController == null
+                              ? const Center(child: CircularProgressIndicator())
+                              : WebViewWidget(controller: _webViewController!)),
                     ),
                   ),
                   Expanded(
@@ -233,14 +233,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                       padding: const EdgeInsets.all(10),
                       child: ListView.builder(
                         itemCount: _logs.length,
-                        itemBuilder:
-                            (_, i) => Text(
-                              _logs[i],
-                              style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 12,
-                              ),
-                            ),
+                        itemBuilder: (_, i) => Text(_logs[i], style: const TextStyle(color: Colors.white60, fontSize: 12)),
                       ),
                     ),
                   ),

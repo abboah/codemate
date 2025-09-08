@@ -43,6 +43,10 @@ class AgentChatNotifier extends ChangeNotifier {
     }
   }
 
+  // Active chat id that may be created lazily when starting a new conversation
+  String? _activeChatId;
+  String? get activeChatId => _activeChatId ?? (chatId.isNotEmpty ? chatId : null);
+
   List<AgentChatMessage> _messages = [];
   List<AgentChatMessage> get messages => _messages;
 
@@ -94,11 +98,20 @@ class AgentChatNotifier extends ChangeNotifier {
     _isSending = true;
     notifyListeners();
 
-    if (chatId.isEmpty) return;
+    // Ensure a chat exists (create lazily if this is a new conversation)
+    final seedTitle = _seedTitleFromText(text);
+    final effectiveChatId = await _ensureChatExists(projectId: projectId, seedTitle: seedTitle);
+    if (effectiveChatId == null || effectiveChatId.isEmpty) {
+      // If we still couldn't get a chat id, surface an error in the placeholder
+      _isSending = false;
+      _error = "Failed to initialize chat session.";
+      notifyListeners();
+      return;
+    }
 
     final userMessage = AgentChatMessage(
       id: _uuid.v4(),
-      chatId: chatId,
+      chatId: effectiveChatId,
       sender: MessageSender.user,
       messageType: AgentMessageType.text,
       content: text,
@@ -108,7 +121,7 @@ class AgentChatNotifier extends ChangeNotifier {
 
     final aiPlaceholder = AgentChatMessage(
       id: _uuid.v4(),
-      chatId: chatId,
+      chatId: effectiveChatId,
       sender: MessageSender.ai,
       messageType: AgentMessageType.toolInProgress,
       content: 'Robin is thinking...',
@@ -151,7 +164,7 @@ class AgentChatNotifier extends ChangeNotifier {
               )
               .toList();
 
-      final functionName =
+    final functionName =
           useAskHandler ? 'agent-chat-handler' : 'agent-handler';
 
       // 2. Invoke the Supabase Edge Function
@@ -165,7 +178,7 @@ class AgentChatNotifier extends ChangeNotifier {
           'attachedFiles': attachedFiles,
           'includeThoughts': true,
       // Provide chatId so server can scope artifacts/messages correctly
-      'chatId': chatId,
+      'chatId': effectiveChatId,
         },
       );
 
@@ -257,11 +270,20 @@ class AgentChatNotifier extends ChangeNotifier {
           try {
             await _client
                 .from('agent_artifacts')
-                .update({'message_id': aiMessageId, 'chat_id': chatId})
+                .update({'message_id': aiMessageId, 'chat_id': effectiveChatId})
                 .eq('id', aid);
           } catch (_) {}
         }
       }
+
+      // Optionally update chat title after first AI response
+      try {
+        final generatedTitle = await _chatService.generateChatTitle(text, aiResponseContent);
+        await _client
+            .from('agent_chats')
+            .update({'title': generatedTitle})
+            .eq('id', effectiveChatId);
+      } catch (_) {}
 
       // 6. Refresh the file tree in case the agent modified files
       _ref.read(projectFilesProvider(projectId).notifier).fetchFiles();
@@ -328,7 +350,7 @@ class AgentChatNotifier extends ChangeNotifier {
       'attachedFiles': attachedFiles,
       'includeThoughts': true,
       // Provide chatId so server can scope artifacts/messages correctly
-      'chatId': chatId,
+      'chatId': activeChatId ?? chatId,
     });
 
     _isStreaming = true;
@@ -766,7 +788,7 @@ class AgentChatNotifier extends ChangeNotifier {
         try {
           await _client
               .from('agent_artifacts')
-              .update({'message_id': aiMessageId, 'chat_id': chatId})
+              .update({'message_id': aiMessageId, 'chat_id': (activeChatId ?? chatId)})
               .eq('id', aid);
         } catch (_) {}
       }
@@ -775,5 +797,51 @@ class AgentChatNotifier extends ChangeNotifier {
 
     _isStreaming = false;
     notifyListeners();
+  }
+
+  // Lazily create a chat row when starting a new conversation
+  Future<String?> _ensureChatExists({
+    required String projectId,
+    String? seedTitle,
+  }) async {
+    // If we already have an id (initial or previously created), reuse it
+    if ((_activeChatId != null && _activeChatId!.isNotEmpty) || chatId.isNotEmpty) {
+      _activeChatId ??= chatId; // cache provided id
+      return _activeChatId;
+    }
+    try {
+      final newId = _uuid.v4();
+      final title = (seedTitle?.trim().isNotEmpty == true) ? seedTitle!.trim() : 'New Chat';
+      final inserted = await _client
+          .from('agent_chats')
+          .insert({
+            'id': newId,
+            'project_id': projectId,
+            'title': title,
+          })
+          .select('id')
+          .single();
+      final createdId = (inserted as Map<String, dynamic>?)?['id']?.toString();
+      if (createdId != null && createdId.isNotEmpty) {
+        _activeChatId = createdId;
+        // Fetch messages is not necessary for a new chat, but notify in case UI wants to react
+        notifyListeners();
+        return _activeChatId;
+      }
+      return null;
+    } catch (e) {
+      _error = 'Failed to create chat: $e';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  String _seedTitleFromText(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return 'New Chat';
+    // Take first 6 words or 48 chars as a seed
+    final words = trimmed.split(RegExp(r"\s+")).take(6).join(' ');
+    if (words.length <= 48) return words;
+    return words.substring(0, 48);
   }
 }
