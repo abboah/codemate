@@ -191,12 +191,10 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.of(context).size;
-    final double boxWidth = _expanded
-        ? (screen.width - 32).clamp(320.0, screen.width)
-        : 960;
-    final double boxHeight = _expanded
-        ? (screen.height - 96).clamp(320.0, screen.height)
-        : 640;
+    final double boxWidth =
+        _expanded ? (screen.width - 32).clamp(320.0, screen.width) : 960;
+    final double boxHeight =
+        _expanded ? (screen.height - 96).clamp(320.0, screen.height) : 640;
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -237,9 +235,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                     child: IconButton(
                       onPressed: () => setState(() => _expanded = !_expanded),
                       icon: Icon(
-                        _expanded
-                            ? Icons.fullscreen_exit
-                            : Icons.fullscreen,
+                        _expanded ? Icons.fullscreen_exit : Icons.fullscreen,
                         color: Colors.white70,
                         size: 18,
                       ),
