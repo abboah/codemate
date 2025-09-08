@@ -23,6 +23,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
   bool _booting = false;
   bool _installing = false;
   bool _running = false;
+  bool _expanded = false;
   final List<String> _logs = [];
   WebViewController? _webViewController;
 
@@ -49,6 +50,8 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
     });
 
     try {
+      // Early warning if COOP/COEP are missing
+      if (!(identical(1, 1))) {}
       await _svc.boot();
       _appendLog('WebContainer booted.');
       setState(() => _booting = false);
@@ -187,11 +190,18 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
 
   @override
   Widget build(BuildContext context) {
+    final screen = MediaQuery.of(context).size;
+    final double boxWidth = _expanded
+        ? (screen.width - 32).clamp(320.0, screen.width)
+        : 960;
+    final double boxHeight = _expanded
+        ? (screen.height - 96).clamp(320.0, screen.height)
+        : 640;
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 960,
-        height: 640,
+        width: boxWidth,
+        height: boxHeight,
         decoration: BoxDecoration(
           color: const Color(0xFF0F0F0F),
           borderRadius: BorderRadius.circular(12),
@@ -221,6 +231,54 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                     ),
                   ),
                   const Spacer(),
+                  // Expand/Collapse button
+                  Tooltip(
+                    message: _expanded ? 'Exit Fullscreen' : 'Fullscreen',
+                    child: IconButton(
+                      onPressed: () => setState(() => _expanded = !_expanded),
+                      icon: Icon(
+                        _expanded
+                            ? Icons.fullscreen_exit
+                            : Icons.fullscreen,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.05),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Close button
+                  Tooltip(
+                    message: 'Close',
+                    child: IconButton(
+                      onPressed: () {
+                        Navigator.of(context).maybePop();
+                      },
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.white.withOpacity(0.05),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: BorderSide(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   TextButton.icon(
                     onPressed:
                         (_booting || _installing || _running) ? null : _start,

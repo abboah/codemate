@@ -21,8 +21,9 @@ const server = http.createServer((req, res) => {
     }
     const headers = {
       'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Embedder-Policy': 'credentialless',
       'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Origin-Agent-Cluster': '?1',
       'X-Content-Type-Options': 'nosniff',
       'Content-Type': contentType(filePath),
     };
