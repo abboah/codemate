@@ -245,9 +245,15 @@ class CourseCard extends StatelessWidget {
                     width: double.infinity,
                     child: ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                      child: Image.asset(
-                        'assets/course_images/${course.name.toLowerCase()}.png',
-                        fit: BoxFit.cover,
+                      child: Image.network(
+  supabase.storage
+      .from('assets')
+      .getPublicUrl('course_images/${course.name.toLowerCase()}.png'),
+  fit: BoxFit.cover,
+
+                      // child: Image.asset(
+                      //   'assets/course_images/${course.name.toLowerCase()}.png',
+                      //   fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
                             decoration: BoxDecoration(

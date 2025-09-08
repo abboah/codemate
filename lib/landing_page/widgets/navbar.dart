@@ -55,10 +55,10 @@ class _NavBarState extends State<NavBar> with TickerProviderStateMixin {
   late Animation<Offset> _slideAnimation;
 
   final List<NavItem> _navItems = [
-    NavItem('Features', Icons.star_outline),
-    NavItem('Solutions', Icons.lightbulb_outline),
-    NavItem('Resources', Icons.library_books_outlined),
-    NavItem('Pricing', Icons.attach_money_outlined),
+    // NavItem('Features', Icons.star_outline),
+    // NavItem('Solutions', Icons.lightbulb_outline),
+    // NavItem('Resources', Icons.library_books_outlined),
+    // NavItem('Pricing', Icons.attach_money_outlined),
   ];
 
   int _hoveredIndex = -1;

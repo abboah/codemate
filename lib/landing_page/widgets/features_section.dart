@@ -1,5 +1,6 @@
 import 'package:codemate/landing_page/landing_page.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class FeatureSection extends StatelessWidget {
   final String title;
@@ -94,7 +95,7 @@ class FeatureSection extends StatelessWidget {
     );
   }
 
-  Widget _buildImage() {
+  Widget _buildImage() { final supabase = Supabase.instance.client;
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
@@ -107,8 +108,12 @@ class FeatureSection extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Image.asset(
-          imagePath,
+
+        
+        child: Image.network(
+          supabase.storage
+      .from('assets')
+      .getPublicUrl(imagePath), // e.g. "images/code_editor.png"
           width: double.infinity,
           fit: BoxFit.contain,
         ),
