@@ -45,8 +45,7 @@ class AgentChatNotifier extends ChangeNotifier {
 
   // Active chat id that may be created lazily when starting a new conversation
   String? _activeChatId;
-  String? get activeChatId =>
-      _activeChatId ?? (chatId.isNotEmpty ? chatId : null);
+  String? get activeChatId => _activeChatId ?? (chatId.isNotEmpty ? chatId : null);
 
   List<AgentChatMessage> _messages = [];
   List<AgentChatMessage> get messages => _messages;
@@ -101,10 +100,7 @@ class AgentChatNotifier extends ChangeNotifier {
 
     // Ensure a chat exists (create lazily if this is a new conversation)
     final seedTitle = _seedTitleFromText(text);
-    final effectiveChatId = await _ensureChatExists(
-      projectId: projectId,
-      seedTitle: seedTitle,
-    );
+    final effectiveChatId = await _ensureChatExists(projectId: projectId, seedTitle: seedTitle);
     if (effectiveChatId == null || effectiveChatId.isEmpty) {
       // If we still couldn't get a chat id, surface an error in the placeholder
       _isSending = false;
@@ -168,11 +164,11 @@ class AgentChatNotifier extends ChangeNotifier {
               )
               .toList();
 
-      final functionName =
+    final functionName =
           useAskHandler ? 'agent-chat-handler' : 'agent-handler';
 
       // 2. Invoke the Supabase Edge Function
-      final response = await _client.functions.invoke(
+    final response = await _client.functions.invoke(
         functionName,
         body: {
           'prompt': text,
@@ -181,8 +177,8 @@ class AgentChatNotifier extends ChangeNotifier {
           'model': model,
           'attachedFiles': attachedFiles,
           'includeThoughts': true,
-          // Provide chatId so server can scope artifacts/messages correctly
-          'chatId': effectiveChatId,
+      // Provide chatId so server can scope artifacts/messages correctly
+      'chatId': effectiveChatId,
         },
       );
 
@@ -193,12 +189,9 @@ class AgentChatNotifier extends ChangeNotifier {
       final Map<String, dynamic> result = response.data as Map<String, dynamic>;
       final aiResponseContent = result['text'] as String? ?? '';
       final List<dynamic> fileEdits = (result['fileEdits'] as List?) ?? [];
-      final List<dynamic> filesAnalyzed =
-          (result['filesAnalyzed'] as List?) ?? [];
-      final List<dynamic> artifactIdsDyn =
-          (result['artifactIds'] as List?) ?? const [];
-      final List<String> artifactIds =
-          artifactIdsDyn.map((e) => e.toString()).toList();
+      final List<dynamic> filesAnalyzed = (result['filesAnalyzed'] as List?) ?? [];
+      final List<dynamic> artifactIdsDyn = (result['artifactIds'] as List?) ?? const [];
+      final List<String> artifactIds = artifactIdsDyn.map((e) => e.toString()).toList();
       // Prepare artifact refs for tool_results and tool_calls
       final List<Map<String, dynamic>> artifactRefs = [
         for (final id in artifactIds)
@@ -206,7 +199,7 @@ class AgentChatNotifier extends ChangeNotifier {
             'name': 'artifact_read',
             'artifactId': id,
             'result': {'status': 'success', 'id': id},
-          },
+          }
       ];
 
       // 3. Prepare the AI message for streaming and show tool results immediately
@@ -239,7 +232,7 @@ class AgentChatNotifier extends ChangeNotifier {
                   'array': 'filesAnalyzed',
                   'offset': j,
                 },
-            ],
+            ]
           },
         );
         notifyListeners();
@@ -263,15 +256,13 @@ class AgentChatNotifier extends ChangeNotifier {
       await _client.from('agent_chat_messages').insert(userMessage.toMap());
       final sentAtUser = userMessage.sentAt;
       final sentAtAi = sentAtUser.add(const Duration(milliseconds: 10));
-      final aiWithToolResults = _messages[index].copyWith(sentAt: sentAtAi);
-      final inserted =
-          await _client
-              .from('agent_chat_messages')
-              .insert(aiWithToolResults.toMap())
-              .select('id')
-              .single();
-      final String? aiMessageId =
-          (inserted as Map<String, dynamic>?)?['id'] as String?;
+  final aiWithToolResults = _messages[index].copyWith(sentAt: sentAtAi);
+      final inserted = await _client
+          .from('agent_chat_messages')
+          .insert(aiWithToolResults.toMap())
+          .select('id')
+          .single();
+      final String? aiMessageId = (inserted as Map<String, dynamic>?)?['id'] as String?;
 
       // Link any created artifacts to this AI message (and ensure chat_id)
       if (aiMessageId != null && artifactIds.isNotEmpty) {
@@ -287,10 +278,7 @@ class AgentChatNotifier extends ChangeNotifier {
 
       // Optionally update chat title after first AI response
       try {
-        final generatedTitle = await _chatService.generateChatTitle(
-          text,
-          aiResponseContent,
-        );
+        final generatedTitle = await _chatService.generateChatTitle(text, aiResponseContent);
         await _client
             .from('agent_chats')
             .update({'title': generatedTitle})
@@ -381,17 +369,16 @@ class AgentChatNotifier extends ChangeNotifier {
     );
     notifyListeners();
 
-    final fileEdits = <dynamic>[];
-    final filesRead = <Map<String, dynamic>>[]; // { path, lines }
-    final filesSearched = <Map<String, dynamic>>[]; // { query, results }
-    // First-class artifacts captured during stream; entries: { name, artifactId?, result }
-    final artifacts = <Map<String, dynamic>>[];
-    // Composite tool executions captured during stream
-    final compositeTasks = <Map<String, dynamic>>[];
-    final toolCalls =
-        <Map<String, dynamic>>[]; // { index, name, array, offset, artifactId? }
-    final StringBuffer thoughtsBuf = StringBuffer();
-    final List<String> createdArtifactIds = <String>[];
+  final fileEdits = <dynamic>[];
+  final filesRead = <Map<String, dynamic>>[]; // { path, lines }
+  final filesSearched = <Map<String, dynamic>>[]; // { query, results }
+  // First-class artifacts captured during stream; entries: { name, artifactId?, result }
+  final artifacts = <Map<String, dynamic>>[];
+  // Composite tool executions captured during stream
+  final compositeTasks = <Map<String, dynamic>>[];
+  final toolCalls = <Map<String, dynamic>>[]; // { index, name, array, offset, artifactId? }
+  final StringBuffer thoughtsBuf = StringBuffer();
+  final List<String> createdArtifactIds = <String>[];
 
     // Parse NDJSON lines
     await for (final evt in ndjson.stream()) {
@@ -446,7 +433,7 @@ class AgentChatNotifier extends ChangeNotifier {
           _messages[index] = _messages[index].copyWith(toolResults: tr);
           notifyListeners();
           break;
-        case 'tool_result':
+  case 'tool_result':
           {
             final name = evt['name'] as String?;
             final result = evt['result'];
@@ -585,9 +572,7 @@ class AgentChatNotifier extends ChangeNotifier {
                 final tr = Map<String, dynamic>.from(
                   _messages[index].toolResults ?? {'fileEdits': fileEdits},
                 );
-                tr['compositeTasks'] = List<Map<String, dynamic>>.from(
-                  compositeTasks,
-                );
+                tr['compositeTasks'] = List<Map<String, dynamic>>.from(compositeTasks);
                 // Collapse thoughts
                 final ui = Map<String, dynamic>.from((tr['ui'] as Map? ?? {}));
                 ui['expandThoughts'] = false;
@@ -626,18 +611,12 @@ class AgentChatNotifier extends ChangeNotifier {
               bool isDup = false;
               final fu = (toAdd['file_url']?.toString() ?? '').trim();
               if (fu.isNotEmpty) {
-                isDup = filesAnalyzed.any(
-                  (e) => (e['file_url']?.toString() ?? '') == fu,
-                );
+                isDup = filesAnalyzed.any((e) => (e['file_url']?.toString() ?? '') == fu);
               } else {
                 final mt = toAdd['mime_type']?.toString();
                 final bl = toAdd['byte_length']?.toString();
                 if (mt != null && bl != null) {
-                  isDup = filesAnalyzed.any(
-                    (e) =>
-                        (e['mime_type']?.toString() == mt) &&
-                        (e['byte_length']?.toString() == bl),
-                  );
+                  isDup = filesAnalyzed.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
                 }
               }
               if (!isDup) {
@@ -695,27 +674,19 @@ class AgentChatNotifier extends ChangeNotifier {
               (tr['filesAnalyzed'] as List? ?? const []),
             );
             final incoming = List<Map<String, dynamic>>.from(
-              List<dynamic>.from(
-                evt['filesAnalyzed'],
-              ).map((e) => Map<String, dynamic>.from(e as Map)),
+              List<dynamic>.from(evt['filesAnalyzed']).map((e) => Map<String, dynamic>.from(e as Map)),
             );
             int addedCount = 0;
             for (final inc in incoming) {
               final fu = (inc['file_url']?.toString() ?? '').trim();
               bool dup = false;
               if (fu.isNotEmpty) {
-                dup = existing.any(
-                  (e) => (e['file_url']?.toString() ?? '') == fu,
-                );
+                dup = existing.any((e) => (e['file_url']?.toString() ?? '') == fu);
               } else {
                 final mt = inc['mime_type']?.toString();
                 final bl = inc['byte_length']?.toString();
                 if (mt != null && bl != null) {
-                  dup = existing.any(
-                    (e) =>
-                        (e['mime_type']?.toString() == mt) &&
-                        (e['byte_length']?.toString() == bl),
-                  );
+                  dup = existing.any((e) => (e['mime_type']?.toString() == mt) && (e['byte_length']?.toString() == bl));
                 }
               }
               if (!dup) {
@@ -745,16 +716,10 @@ class AgentChatNotifier extends ChangeNotifier {
           if (evt['artifactIds'] is List) {
             createdArtifactIds
               ..clear()
-              ..addAll(
-                List<dynamic>.from(evt['artifactIds']).map((e) => e.toString()),
-              );
+              ..addAll(List<dynamic>.from(evt['artifactIds']).map((e) => e.toString()));
             // Merge artifactIds into artifacts array and toolCalls
             if (artifacts.isNotEmpty) {
-              for (
-                int i = 0;
-                i < artifacts.length && i < createdArtifactIds.length;
-                i++
-              ) {
+              for (int i = 0; i < artifacts.length && i < createdArtifactIds.length; i++) {
                 final a = Map<String, dynamic>.from(artifacts[i]);
                 a['artifactId'] ??= createdArtifactIds[i];
                 artifacts[i] = a;
@@ -801,7 +766,7 @@ class AgentChatNotifier extends ChangeNotifier {
       toolCalls: <String, dynamic>{'events': toolCalls},
       sentAt: sentAtAi,
     );
-    // Strip UI-only keys before saving
+  // Strip UI-only keys before saving
     final sanitized = aiToSave.copyWith(
       toolResults: () {
         final tr = aiToSave.toolResults;
@@ -811,24 +776,19 @@ class AgentChatNotifier extends ChangeNotifier {
         return m;
       }(),
     );
-    final inserted =
-        await _client
-            .from('agent_chat_messages')
-            .insert(sanitized.toMap())
-            .select('id')
-            .single();
-    final String? aiMessageId =
-        (inserted as Map<String, dynamic>?)?['id'] as String?;
+    final inserted = await _client
+        .from('agent_chat_messages')
+        .insert(sanitized.toMap())
+        .select('id')
+        .single();
+    final String? aiMessageId = (inserted as Map<String, dynamic>?)?['id'] as String?;
     // Link artifacts created during this turn to the saved AI message
     if (aiMessageId != null && createdArtifactIds.isNotEmpty) {
       for (final aid in createdArtifactIds) {
         try {
           await _client
               .from('agent_artifacts')
-              .update({
-                'message_id': aiMessageId,
-                'chat_id': (activeChatId ?? chatId),
-              })
+              .update({'message_id': aiMessageId, 'chat_id': (activeChatId ?? chatId)})
               .eq('id', aid);
         } catch (_) {}
       }
@@ -845,23 +805,22 @@ class AgentChatNotifier extends ChangeNotifier {
     String? seedTitle,
   }) async {
     // If we already have an id (initial or previously created), reuse it
-    if ((_activeChatId != null && _activeChatId!.isNotEmpty) ||
-        chatId.isNotEmpty) {
+    if ((_activeChatId != null && _activeChatId!.isNotEmpty) || chatId.isNotEmpty) {
       _activeChatId ??= chatId; // cache provided id
       return _activeChatId;
     }
     try {
       final newId = _uuid.v4();
-      final title =
-          (seedTitle?.trim().isNotEmpty == true)
-              ? seedTitle!.trim()
-              : 'New Chat';
-      final inserted =
-          await _client
-              .from('agent_chats')
-              .insert({'id': newId, 'project_id': projectId, 'title': title})
-              .select('id')
-              .single();
+      final title = (seedTitle?.trim().isNotEmpty == true) ? seedTitle!.trim() : 'New Chat';
+      final inserted = await _client
+          .from('agent_chats')
+          .insert({
+            'id': newId,
+            'project_id': projectId,
+            'title': title,
+          })
+          .select('id')
+          .single();
       final createdId = (inserted as Map<String, dynamic>?)?['id']?.toString();
       if (createdId != null && createdId.isNotEmpty) {
         _activeChatId = createdId;

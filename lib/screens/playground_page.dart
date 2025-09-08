@@ -753,9 +753,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               onPressed:
                                   _artifactPreviewIndex > 0
                                       ? () {
-                                        setStateSB(() {
-                                          _artifactPreviewIndex--;
-                                        });
+                                        setStateSB(() { _artifactPreviewIndex--; });
                                       }
                                       : null,
                               icon: const Icon(
@@ -938,16 +936,17 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     try {
       final origin = getFunctionsOrigin();
       final uri = Uri.parse("$origin/fact-generator?count=$count");
-      final resp = await http.get(uri, headers: {'Accept': 'application/json'});
+      final resp = await http.get(uri, headers: {
+        'Accept': 'application/json',
+      });
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final Map<String, dynamic> json = jsonDecode(resp.body);
         final list = (json['facts'] as List?)?.cast<dynamic>() ?? const [];
-        final facts =
-            list
-                .map((e) => e.toString())
-                .map((s) => s.trim())
-                .where((s) => s.isNotEmpty)
-                .toList();
+        final facts = list
+            .map((e) => e.toString())
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
         return facts;
       }
     } catch (_) {}
@@ -967,12 +966,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
 
   Widget _buildMagicOverlay(BuildContext context) {
     final screen = MediaQuery.of(context).size;
-    // Slightly narrower modal for balanced design
-    final cardWidth = (screen.width * 0.56).clamp(640.0, 980.0);
-    final fact =
-        (_magicFacts.isNotEmpty)
-            ? _magicFacts[_magicFactIndex % _magicFacts.length]
-            : 'Fetching a cool programming fact…';
+  // Slightly narrower modal for balanced design
+  final cardWidth = (screen.width * 0.56).clamp(640.0, 980.0);
+    final fact = (_magicFacts.isNotEmpty)
+        ? _magicFacts[_magicFactIndex % _magicFacts.length]
+        : 'Fetching a cool programming fact…';
     return Positioned.fill(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -996,10 +994,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 240),
                   curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 22,
-                    vertical: 18,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
                   width: cardWidth,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -1043,25 +1038,21 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                     shape: BoxShape.circle,
                                     gradient: const SweepGradient(
                                       colors: [
-                                        Color(0xFF7F5AF0),
-                                        Color(0xFF9D4EDD),
-                                        Color(0xFF23A6D5),
+                                        Color(0xFF7F5AF0), 
+                                        Color(0xFF9D4EDD), 
+                                        Color(0xFF23A6D5), 
                                         Color(0xFF12D8FA),
-                                        Color(0xFF7F5AF0),
+                                        Color(0xFF7F5AF0)
                                       ],
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(
-                                          0xFF7F5AF0,
-                                        ).withOpacity(0.4),
+                                        color: const Color(0xFF7F5AF0).withOpacity(0.4),
                                         blurRadius: 12,
                                         offset: const Offset(0, 4),
                                       ),
                                       BoxShadow(
-                                        color: const Color(
-                                          0xFF23A6D5,
-                                        ).withOpacity(0.3),
+                                        color: const Color(0xFF23A6D5).withOpacity(0.3),
                                         blurRadius: 8,
                                         spreadRadius: 2,
                                       ),
@@ -1089,15 +1080,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                           ),
                           TextButton.icon(
                             onPressed: () => _stopMagicOverlay(),
-                            icon: const Icon(
-                              Icons.visibility,
-                              color: Colors.white70,
-                              size: 18,
-                            ),
+                            icon: const Icon(Icons.visibility, color: Colors.white70, size: 18),
                             label: Text(
                               'See the action',
                               style: GoogleFonts.poppins(
-                                color: Colors.white70,
+                                color: Colors.white70, 
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                               ),
@@ -1105,15 +1092,10 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.white70,
                               backgroundColor: Colors.white.withOpacity(0.06),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                side: BorderSide(
-                                  color: Colors.white.withOpacity(0.1),
-                                ),
+                                side: BorderSide(color: Colors.white.withOpacity(0.1)),
                               ),
                             ),
                           ),
@@ -1135,9 +1117,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.12),
-                              ),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.2),
@@ -1172,18 +1152,12 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                   height: 6,
                                   decoration: BoxDecoration(
                                     gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFF7F5AF0),
-                                        Color(0xFF9D4EDD),
-                                        Color(0xFF23A6D5),
-                                      ],
+                                      colors: [Color(0xFF7F5AF0), Color(0xFF9D4EDD), Color(0xFF23A6D5)],
                                     ),
                                     borderRadius: BorderRadius.circular(999),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(
-                                          0xFF7F5AF0,
-                                        ).withOpacity(0.3),
+                                        color: const Color(0xFF7F5AF0).withOpacity(0.3),
                                         blurRadius: 6,
                                         offset: const Offset(0, 2),
                                       ),
@@ -1205,9 +1179,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.12),
-                              ),
+                              border: Border.all(color: Colors.white.withOpacity(0.12)),
                               boxShadow: [
                                 BoxShadow(
                                   color: Colors.black.withOpacity(0.2),
@@ -1226,26 +1198,17 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         gradient: const LinearGradient(
-                                          colors: [
-                                            Color(0xFFFFC107),
-                                            Color(0xFFFF9800),
-                                          ],
+                                          colors: [Color(0xFFFFC107), Color(0xFFFF9800)],
                                         ),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: const Color(
-                                              0xFFFFC107,
-                                            ).withOpacity(0.4),
+                                            color: const Color(0xFFFFC107).withOpacity(0.4),
                                             blurRadius: 8,
                                             offset: const Offset(0, 2),
                                           ),
                                         ],
                                       ),
-                                      child: const Icon(
-                                        Icons.lightbulb,
-                                        color: Colors.white,
-                                        size: 16,
-                                      ),
+                                      child: const Icon(Icons.lightbulb, color: Colors.white, size: 16),
                                     ),
                                     const SizedBox(width: 10),
                                     Text(
@@ -1265,12 +1228,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                   switchInCurve: Curves.easeOutCubic,
                                   switchOutCurve: Curves.easeInCubic,
                                   child: Text(
-                                    _loadingFacts
-                                        ? 'Fetching a cool programming fact…'
-                                        : fact,
-                                    key: ValueKey(
-                                      _loadingFacts ? 'loading' : fact,
-                                    ),
+                                    _loadingFacts ? 'Fetching a cool programming fact…' : fact,
+                                    key: ValueKey(_loadingFacts ? 'loading' : fact),
                                     style: GoogleFonts.poppins(
                                       color: Colors.white.withOpacity(0.85),
                                       height: 1.6,
@@ -1284,11 +1243,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                           if (isNarrow) {
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                leftContent,
-                                const SizedBox(height: 12),
-                                rightContent,
-                              ],
+                              children: [leftContent, const SizedBox(height: 12), rightContent],
                             );
                           }
                           return Row(
@@ -1572,8 +1527,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                         !hasMessages
                                             ? _buildLanding(context)
                                             : _buildConversation(context),
-                                        if (_showMagicOverlay)
-                                          _buildMagicOverlay(context),
+                                        if (_showMagicOverlay) _buildMagicOverlay(context),
                                       ],
                                     ),
                                   ),
@@ -1615,8 +1569,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                           !hasMessages
                                               ? _buildLanding(context)
                                               : _buildConversation(context),
-                                          if (_showMagicOverlay)
-                                            _buildMagicOverlay(context),
+                                          if (_showMagicOverlay) _buildMagicOverlay(context),
                                         ],
                                       ),
                                     ),
@@ -2338,26 +2291,27 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
             constraints: BoxConstraints(maxWidth: inputWidth.clamp(360, 720)),
             child: TemplatePromptPills(
               templates: const [
+
                 TemplatePrompt(
                   face: 'Build a Todo App',
                   actual:
-                      'Create a simple Todo application in a single HTML file with inline CSS and JS. Features: add, toggle, delete items; persist to localStorage; clean, responsive UI; keyboard-friendly. Provide concise explanation.',
+                      'Create a simple Todo application in a single HTML file with inline CSS and JS. Features: add, toggle, delete items; persist to localStorage; clean, responsive UI; keyboard-friendly. Provide concise explanation.'
                 ),
                 TemplatePrompt(
                   face: 'Markdown to HTML previewer',
                   actual:
-                      'Build a single-file Markdown previewer (HTML + inline CSS/JS). Left textarea, right live preview. Use a tiny embedded parser or simple heuristics if no library. Style for readability.',
+                      'Build a single-file Markdown previewer (HTML + inline CSS/JS). Left textarea, right live preview. Use a tiny embedded parser or simple heuristics if no library. Style for readability.'
                 ),
                 TemplatePrompt(
                   face: 'Build Flight Sim with Three.js',
                   actual:
-                      'You are in Playground Canvas mode. Build an interactive Flight Simulator using Three.js in a single self-contained HTML file with inline CSS and JS. Include basic controls: pitch, roll, yaw via keyboard, a skybox/gradient background, and a simple plane model (primitive shapes acceptable), with vegetation & clouds. Keep code readable and comment key parts. After implementing, suggest next enhancements briefly.',
+                      'You are in Playground Canvas mode. Build an interactive Flight Simulator using Three.js in a single self-contained HTML file with inline CSS and JS. Include basic controls: pitch, roll, yaw via keyboard, a skybox/gradient background, and a simple plane model (primitive shapes acceptable), with vegetation & clouds. Keep code readable and comment key parts. After implementing, suggest next enhancements briefly.'
                 ),
                 TemplatePrompt(
                   face: "Build a Snake game",
                   actual:
-                      'Create a single HTML file with inline CSS/JS for a Retro-style Snake game. Features: classic gameplay, responsive design, high score system, and simple controls. Use placeholder graphics as needed.',
-                ),
+                      'Create a single HTML file with inline CSS/JS for a Retro-style Snake game. Features: classic gameplay, responsive design, high score system, and simple controls. Use placeholder graphics as needed.'
+                )
               ],
               onSelect: (t) {
                 _sendSpecialPrompt(face: t.face, actual: t.actual);
@@ -2372,10 +2326,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
 
   // Sends a special prompt: user sees face text in the UI bubble styled specially,
   // but the backend only receives the actual detailed prompt. We tag locally for UI.
-  Future<void> _sendSpecialPrompt({
-    required String face,
-    required String actual,
-  }) async {
+  Future<void> _sendSpecialPrompt({required String face, required String actual}) async {
     // Show face prompt in input for a tick to reuse existing send flow UX
     _controller.text = face;
     // Append a visual-only tag to the displayed message content; provider/backend will get `actual` only
@@ -2387,14 +2338,12 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
     // Show magic overlay during special streaming
     _beginMagicOverlay();
     // Optimistically add a special-colored user bubble by sending via provider with a special flag
-    await ref
-        .read(playgroundProvider)
-        .sendSpecial(
-          faceText: display,
-          actualPrompt: actual,
-          attachments: attachments,
-          model: 'gemini-2.5-flash',
-        );
+    await ref.read(playgroundProvider).sendSpecial(
+      faceText: display,
+      actualPrompt: actual,
+      attachments: attachments,
+      model: 'gemini-2.5-flash',
+    );
     _controller.clear();
   }
 
@@ -2424,11 +2373,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                   itemBuilder: (context, index) {
                     final m = state.messages[index];
                     final isUser = m.sender == 'user';
-                    final isStreamingLastAI =
+          final isStreamingLastAI =
                         !isUser &&
                         index == state.messages.length - 1 &&
                         state.streaming;
-                    final isSpecial = m.isSpecial == true;
+          final isSpecial = m.isSpecial == true;
                     // removed unused isLastAI local variable
                     return RepaintBoundary(
                       child: Align(
@@ -2449,12 +2398,9 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                 vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color:
-                                    isUser
-                                        ? (isSpecial
-                                            ? Colors.purple.withOpacity(0.35)
-                                            : AppColors.darkerAccent)
-                                        : Colors.transparent,
+                                color: isUser
+                                    ? (isSpecial ? Colors.purple.withOpacity(0.35) : AppColors.darkerAccent)
+                                    : Colors.transparent,
                                 borderRadius: BorderRadius.only(
                                   topLeft: const Radius.circular(18),
                                   topRight: const Radius.circular(18),
@@ -2657,10 +2603,7 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                         color: Colors.white,
                                         fontSize: 15,
                                         height: 2.2,
-                                        fontWeight:
-                                            isUser
-                                                ? FontWeight.w400
-                                                : FontWeight.w600,
+                                        fontWeight: isUser ? FontWeight.w400 : FontWeight.w600,
                                       ),
                                     ),
                                   if (!isUser && !isStreamingLastAI) ...[

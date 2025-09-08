@@ -7,6 +7,7 @@ import 'package:js/js_util.dart' as jsu;
 @JS('WebContainer.boot')
 external Object _boot();
 
+
 @JS()
 @anonymous
 class _JsWebContainerInstance {
@@ -27,11 +28,7 @@ class WebContainerProcess {
   final Stream<String> stdout;
   final Stream<String> stderr;
   final Future<int> exitCode;
-  WebContainerProcess({
-    required this.stdout,
-    required this.stderr,
-    required this.exitCode,
-  });
+  WebContainerProcess({required this.stdout, required this.stderr, required this.exitCode});
 }
 
 class WebContainerService {
@@ -53,9 +50,7 @@ class WebContainerService {
 
   Future<void> mount(Map<String, dynamic> tree) async {
     _ensureBooted();
-    await jsu.promiseToFuture(
-      jsu.callMethod(_instance!, 'mount', [jsu.jsify(tree)]),
-    );
+    await jsu.promiseToFuture(jsu.callMethod(_instance!, 'mount', [jsu.jsify(tree)]));
   }
 
   Future<void> writeFile(String path, Uint8List data) async {
@@ -72,13 +67,10 @@ class WebContainerService {
     final jsExit = jsu.getProperty(res, 'exit');
     final outputStream = _readableStreamToDartStream(jsOut);
     final errorStream = _readableStreamToDartStream(jsErr);
-    final Future<int> exitFut =
-        jsExit != null ? jsu.promiseToFuture<int>(jsExit) : Future.value(-1);
-    return WebContainerProcess(
-      stdout: outputStream,
-      stderr: errorStream,
-      exitCode: exitFut,
-    );
+    final Future<int> exitFut = jsExit != null
+        ? jsu.promiseToFuture<int>(jsExit)
+        : Future.value(-1);
+    return WebContainerProcess(stdout: outputStream, stderr: errorStream, exitCode: exitFut);
   }
 
   void onServerReady(void Function(int port, String url) cb) {

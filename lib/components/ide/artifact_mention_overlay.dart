@@ -42,8 +42,7 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
   void didUpdateWidget(covariant ArtifactMentionOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Refetch when project/chat scope changes (not for every keystroke)
-    if (oldWidget.projectId != widget.projectId ||
-        oldWidget.chatId != widget.chatId) {
+    if (oldWidget.projectId != widget.projectId || oldWidget.chatId != widget.chatId) {
       _fetch();
     }
   }
@@ -63,11 +62,10 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
       // If chatId provided, prefer those first by filtering later but keep all to allow fallback
       // Alternatively, you can query only chat artifacts when chatId is set.
       final res = await query;
-      final list =
-          (res as List)
-              .whereType<Map<String, dynamic>>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
+      final list = (res as List)
+          .whereType<Map<String, dynamic>>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
       setState(() {
         _rows = list;
         _loading = false;
@@ -85,12 +83,8 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
     Iterable<Map<String, dynamic>> items = _rows;
     if (widget.chatId != null && widget.chatId!.isNotEmpty) {
       // Prioritize artifacts from this chat by ordering them first
-      final chatItems = items.where(
-        (r) => (r['chat_id'] ?? '') == widget.chatId,
-      );
-      final otherItems = items.where(
-        (r) => (r['chat_id'] ?? '') != widget.chatId,
-      );
+      final chatItems = items.where((r) => (r['chat_id'] ?? '') == widget.chatId);
+      final otherItems = items.where((r) => (r['chat_id'] ?? '') != widget.chatId);
       items = [...chatItems, ...otherItems];
     }
     if (q.isEmpty) return items.take(8).toList();
@@ -106,7 +100,6 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
       }
       return key.contains(q) || type.contains(q) || dataTitle.contains(q);
     }
-
     return items.where(matches).take(8).toList();
   }
 
@@ -117,10 +110,7 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
     _hoverOverlay = null;
   }
 
-  void _showHoverPreviewForRow(
-    BuildContext itemContext,
-    Map<String, dynamic> row,
-  ) {
+  void _showHoverPreviewForRow(BuildContext itemContext, Map<String, dynamic> row) {
     _removeHoverOverlay();
     final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
@@ -141,45 +131,44 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
     final payload = _artifactResultPayload(row);
 
     _hoverOverlay = OverlayEntry(
-      builder:
-          (_) => Positioned(
-            left: left,
-            top: useBottomAnchor ? null : top,
-            bottom: useBottomAnchor ? 8 : null,
-            width: previewW,
-            child: Material(
-              color: Colors.transparent,
-              child: Container(
-                constraints: BoxConstraints(
-                  // Allow growth but keep within viewport
-                  maxHeight: screen.height * 0.7,
-                  minWidth: previewW,
-                  maxWidth: previewW,
+      builder: (_) => Positioned(
+        left: left,
+        top: useBottomAnchor ? null : top,
+        bottom: useBottomAnchor ? 8 : null,
+        width: previewW,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            constraints: BoxConstraints(
+              // Allow growth but keep within viewport
+              maxHeight: screen.height * 0.7,
+              minWidth: previewW,
+              maxWidth: previewW,
+            ),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1B1B1B),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.10)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.4),
+                  blurRadius: 12,
+                  spreadRadius: 2,
                 ),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1B1B1B),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.white.withOpacity(0.10)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.4),
-                      blurRadius: 12,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: SingleChildScrollView(
-                  physics: const ClampingScrollPhysics(),
-                  child: AgentToolEventPreviews(
-                    events: [
-                      {'name': name, 'result': payload},
-                    ],
-                  ),
-                ),
+              ],
+            ),
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: AgentToolEventPreviews(
+                events: [
+                  {'name': name, 'result': payload},
+                ],
               ),
             ),
           ),
+        ),
+      ),
     );
     overlay.insert(_hoverOverlay!);
   }
@@ -245,43 +234,32 @@ class _ArtifactMentionOverlayState extends State<ArtifactMentionOverlay> {
           final row = rows[index];
           final label = _artifactLabel(row);
           return Builder(
-            builder:
-                (itemCtx) => MouseRegion(
-                  onEnter: (_) => _showHoverPreviewForRow(itemCtx, row),
-                  onExit: (_) => _removeHoverOverlay(),
-                  child: InkWell(
-                    onTap: () {
-                      _removeHoverOverlay();
-                      widget.onSelect(row);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
+            builder: (itemCtx) => MouseRegion(
+              onEnter: (_) => _showHoverPreviewForRow(itemCtx, row),
+              onExit: (_) => _removeHoverOverlay(),
+              child: InkWell(
+                onTap: () {
+                  _removeHoverOverlay();
+                  widget.onSelect(row);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.storage_rounded, color: Colors.white70, size: 16),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          label,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+                        ),
                       ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.storage_rounded,
-                            color: Colors.white70,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              label,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(
-                                color: Colors.white70,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    ],
                   ),
                 ),
+              ),
+            ),
           );
         },
       ),

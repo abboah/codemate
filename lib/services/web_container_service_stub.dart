@@ -18,8 +18,6 @@ class WebContainerService {
   void onServerReady(void Function(int port, String url) cb) => _unsupported();
 
   Never _unsupported() {
-    throw UnsupportedError(
-      'WebContainers are only supported on Flutter Web with JS.',
-    );
+    throw UnsupportedError('WebContainers are only supported on Flutter Web with JS.');
   }
 }
