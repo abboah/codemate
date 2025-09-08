@@ -511,14 +511,17 @@ class PlaygroundState extends ChangeNotifier {
           throw Exception('Not authenticated');
         }
         final title = await _generateChatTitle(actualPrompt);
-        final newChat = await _client
-            .from('playground_chats')
-            .insert({'user_id': uid, 'title': title})
-            .select('id, title')
-            .single();
+        final newChat =
+            await _client
+                .from('playground_chats')
+                .insert({'user_id': uid, 'title': title})
+                .select('id, title')
+                .single();
         chatId = newChat['id'] as String?;
         chatTitle = newChat['title'] as String? ?? title;
-        try { await fetchChats(); } catch (_) {}
+        try {
+          await fetchChats();
+        } catch (_) {}
       }
 
       final functionsHost = getFunctionsOrigin();
@@ -591,7 +594,11 @@ class PlaygroundState extends ChangeNotifier {
           case 'tool_in_progress':
             final id = evt['id'];
             final name = evt['name'];
-            toolEvents.add({ 'id': id, 'name': name, 'result': {'status': 'in_progress'} });
+            toolEvents.add({
+              'id': id,
+              'name': name,
+              'result': {'status': 'in_progress'},
+            });
             final ip = messages.indexWhere((m) => m.id == aiId);
             if (ip != -1) {
               messages[ip] = PlaygroundMessage(
@@ -599,7 +606,9 @@ class PlaygroundState extends ChangeNotifier {
                 sender: 'ai',
                 content: messages[ip].content,
                 thoughts: messages[ip].thoughts,
-                toolResults: { 'events': List<Map<String, dynamic>>.from(toolEvents) },
+                toolResults: {
+                  'events': List<Map<String, dynamic>>.from(toolEvents),
+                },
                 sentAt: messages[ip].sentAt,
               );
               notifyListeners();
@@ -610,8 +619,11 @@ class PlaygroundState extends ChangeNotifier {
             final name = evt['name'];
             final res = evt['result'];
             final idx = toolEvents.indexWhere((e) => e['id'] == id);
-            if (idx != -1) { toolEvents[idx] = { 'id': id, 'name': name, 'result': res }; }
-            else { toolEvents.add({ 'id': id, 'name': name, 'result': res }); }
+            if (idx != -1) {
+              toolEvents[idx] = {'id': id, 'name': name, 'result': res};
+            } else {
+              toolEvents.add({'id': id, 'name': name, 'result': res});
+            }
             final ip2 = messages.indexWhere((m) => m.id == aiId);
             if (ip2 != -1) {
               messages[ip2] = PlaygroundMessage(
@@ -619,7 +631,9 @@ class PlaygroundState extends ChangeNotifier {
                 sender: 'ai',
                 content: messages[ip2].content,
                 thoughts: messages[ip2].thoughts,
-                toolResults: { 'events': List<Map<String, dynamic>>.from(toolEvents) },
+                toolResults: {
+                  'events': List<Map<String, dynamic>>.from(toolEvents),
+                },
                 sentAt: messages[ip2].sentAt,
               );
               notifyListeners();
@@ -636,13 +650,19 @@ class PlaygroundState extends ChangeNotifier {
                 sender: 'ai',
                 content: textSoFar,
                 thoughts: thoughtsSoFar.isNotEmpty ? thoughtsSoFar : null,
-                toolResults: { 'events': toolEvents },
+                toolResults: {'events': toolEvents},
                 sentAt: messages[i].sentAt,
               );
             }
-            try { await fetchChats(); } catch (_) {}
-            try { await fetchCanvasFiles(); } catch (_) {}
-            try { await fetchArtifacts(); } catch (_) {}
+            try {
+              await fetchChats();
+            } catch (_) {}
+            try {
+              await fetchCanvasFiles();
+            } catch (_) {}
+            try {
+              await fetchArtifacts();
+            } catch (_) {}
             break;
         }
       }
