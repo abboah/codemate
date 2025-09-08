@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class PracticeProblemModal extends ConsumerWidget {
   final Topic topic;
@@ -120,8 +121,12 @@ class PracticeProblemModal extends ConsumerWidget {
                                         shape: BoxShape.circle,
                                         gradient: LinearGradient(
                                           colors: [
-                                            const Color(0xFF00A8FF).withOpacity(0.3),
-                                            const Color(0xFF0078FF).withOpacity(0.3),
+                                            const Color(
+                                              0xFF00A8FF,
+                                            ).withOpacity(0.3),
+                                            const Color(
+                                              0xFF0078FF,
+                                            ).withOpacity(0.3),
                                           ],
                                         ),
                                       ),
@@ -152,15 +157,16 @@ class PracticeProblemModal extends ConsumerWidget {
                                 ),
                               );
                             }
-                            
+
                             return ListView.builder(
                               itemCount: problems.length,
                               itemBuilder: (context, index) {
                                 final problem = problems[index];
                                 final description = problem.description;
-                                final subtitleText = description.length > 100
-                                    ? '${description.substring(0, 100)}...'
-                                    : description;
+                                final subtitleText =
+                                    description.length > 100
+                                        ? '${description.substring(0, 100)}...'
+                                        : description;
 
                                 return Container(
                                   margin: const EdgeInsets.only(bottom: 16),
@@ -184,7 +190,11 @@ class PracticeProblemModal extends ConsumerWidget {
                                       onTap: () {
                                         Navigator.of(context).push(
                                           MaterialPageRoute(
-                                            builder: (context) => PracticeProblemDetailView(problem: problem),
+                                            builder:
+                                                (context) =>
+                                                    PracticeProblemDetailView(
+                                                      problem: problem,
+                                                    ),
                                           ),
                                         );
                                       },
@@ -199,8 +209,12 @@ class PracticeProblemModal extends ConsumerWidget {
                                                 shape: BoxShape.circle,
                                                 gradient: LinearGradient(
                                                   colors: [
-                                                    const Color(0xFF7F00FF).withOpacity(0.3),
-                                                    const Color(0xFFE100FF).withOpacity(0.3),
+                                                    const Color(
+                                                      0xFF7F00FF,
+                                                    ).withOpacity(0.3),
+                                                    const Color(
+                                                      0xFFE100FF,
+                                                    ).withOpacity(0.3),
                                                   ],
                                                 ),
                                               ),
@@ -208,7 +222,9 @@ class PracticeProblemModal extends ConsumerWidget {
                                                 child: Text(
                                                   '${index + 1}',
                                                   style: GoogleFonts.poppins(
-                                                    color: const Color(0xFFE100FF),
+                                                    color: const Color(
+                                                      0xFFE100FF,
+                                                    ),
                                                     fontWeight: FontWeight.bold,
                                                     fontSize: 16,
                                                   ),
@@ -218,13 +234,15 @@ class PracticeProblemModal extends ConsumerWidget {
                                             const SizedBox(width: 16),
                                             Expanded(
                                               child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     problem.title,
                                                     style: GoogleFonts.poppins(
                                                       color: Colors.white,
-                                                      fontWeight: FontWeight.w600,
+                                                      fontWeight:
+                                                          FontWeight.w600,
                                                       fontSize: 16,
                                                     ),
                                                   ),
@@ -232,7 +250,8 @@ class PracticeProblemModal extends ConsumerWidget {
                                                   Text(
                                                     subtitleText,
                                                     style: GoogleFonts.poppins(
-                                                      color: Colors.white.withOpacity(0.7),
+                                                      color: Colors.white
+                                                          .withOpacity(0.7),
                                                       fontSize: 14,
                                                       height: 1.4,
                                                     ),
@@ -246,7 +265,9 @@ class PracticeProblemModal extends ConsumerWidget {
                                               height: 36,
                                               decoration: BoxDecoration(
                                                 shape: BoxShape.circle,
-                                                color: Colors.white.withOpacity(0.1),
+                                                color: Colors.white.withOpacity(
+                                                  0.1,
+                                                ),
                                               ),
                                               child: const Icon(
                                                 Icons.arrow_forward,
@@ -263,67 +284,50 @@ class PracticeProblemModal extends ConsumerWidget {
                               },
                             );
                           },
-                          loading: () => const Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                CircularProgressIndicator(
-                                  color: Color(0xFF00A8FF),
-                                  strokeWidth: 3,
-                                ),
-                                SizedBox(height: 16),
-                                Text(
-                                  'Loading practice problems...',
-                                  style: TextStyle(
-                                    color: Colors.white70,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          error: (err, stack) => Center(
-                            child: Container(
-                              padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.3),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline,
-                                    color: Colors.redAccent,
-                                    size: 48,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Could not load practice problems',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.redAccent,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w600,
+                          loading: () => const ModalSkeleton(),
+                          error:
+                              (err, stack) => Center(
+                                child: Container(
+                                  padding: const EdgeInsets.all(24),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                      width: 1,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Please try again later',
-                                    textAlign: TextAlign.center,
-                                    style: GoogleFonts.poppins(
-                                      color: Colors.white.withOpacity(0.7),
-                                      fontSize: 14,
-                                    ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.error_outline,
+                                        color: Colors.redAccent,
+                                        size: 48,
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Could not load practice problems',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.redAccent,
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Please try again later',
+                                        textAlign: TextAlign.center,
+                                        style: GoogleFonts.poppins(
+                                          color: Colors.white.withOpacity(0.7),
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
                         ),
                       ),
                     ],
@@ -344,11 +348,13 @@ class PracticeProblemModal extends ConsumerWidget {
                       ),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white, size: 20),
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        padding: EdgeInsets.zero,
+                      icon: const Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 20,
                       ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      style: IconButton.styleFrom(padding: EdgeInsets.zero),
                     ),
                   ),
                 ),
@@ -367,10 +373,12 @@ class PracticeProblemDetailView extends ConsumerStatefulWidget {
   const PracticeProblemDetailView({super.key, required this.problem});
 
   @override
-  ConsumerState<PracticeProblemDetailView> createState() => _PracticeProblemDetailViewState();
+  ConsumerState<PracticeProblemDetailView> createState() =>
+      _PracticeProblemDetailViewState();
 }
 
-class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetailView> {
+class _PracticeProblemDetailViewState
+    extends ConsumerState<PracticeProblemDetailView> {
   late TextEditingController _codeController;
   String _testResult = '';
   String? _aiSuggestion;
@@ -454,19 +462,38 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
   Widget _buildAiSuggestionWidget(String suggestion) {
     final lines = suggestion.split('\n');
     final firstLine = lines.isNotEmpty ? lines.first.trim() : '';
-    final restOfSuggestion = lines.length > 1 ? lines.skip(1).join('\n').trim() : '';
+    final restOfSuggestion =
+        lines.length > 1 ? lines.skip(1).join('\n').trim() : '';
 
     final remarkStyles = {
-      "Not quite": {'color': Colors.redAccent, 'text': "Not quite", 'icon': Icons.close},
-      "Almost there": {'color': Colors.orangeAccent, 'text': "Almost there", 'icon': Icons.trending_up},
-      "Great": {'color': const Color(0xFF00C851), 'text': "Great", 'icon': Icons.thumb_up},
-      "Excellent!": {'color': const Color(0xFFE100FF), 'text': "Excellent!", 'icon': Icons.emoji_events},
+      "Not quite": {
+        'color': Colors.redAccent,
+        'text': "Not quite",
+        'icon': Icons.close,
+      },
+      "Almost there": {
+        'color': Colors.orangeAccent,
+        'text': "Almost there",
+        'icon': Icons.trending_up,
+      },
+      "Great": {
+        'color': const Color(0xFF00C851),
+        'text': "Great",
+        'icon': Icons.thumb_up,
+      },
+      "Excellent!": {
+        'color': const Color(0xFFE100FF),
+        'text': "Excellent!",
+        'icon': Icons.emoji_events,
+      },
     };
 
     String? matchedKey;
     // More robust check for the remark, ignoring case and punctuation.
     for (var key in remarkStyles.keys) {
-      if (firstLine.toLowerCase().contains(key.toLowerCase().replaceAll('!', ''))) {
+      if (firstLine.toLowerCase().contains(
+        key.toLowerCase().replaceAll('!', ''),
+      )) {
         matchedKey = key;
         break;
       }
@@ -483,10 +510,7 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
         decoration: BoxDecoration(
           color: (style['color'] as Color).withOpacity(0.15),
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: style['color'] as Color,
-            width: 1.5,
-          ),
+          border: Border.all(color: style['color'] as Color, width: 1.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -515,10 +539,7 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (hasRemark) ...[
-          remarkPill,
-          const SizedBox(height: 16),
-        ],
+        if (hasRemark) ...[remarkPill, const SizedBox(height: 16)],
         if (contentToShow.isNotEmpty)
           Container(
             width: double.infinity,
@@ -533,7 +554,9 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
             ),
             child: MarkdownBody(
               data: contentToShow,
-              styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+              styleSheet: MarkdownStyleSheet.fromTheme(
+                Theme.of(context),
+              ).copyWith(
                 p: GoogleFonts.poppins(
                   color: Colors.white.withOpacity(0.9),
                   fontSize: 14,
@@ -603,10 +626,7 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF121216),
-              const Color(0xFF0A0A0D),
-            ],
+            colors: [const Color(0xFF121216), const Color(0xFF0A0A0D)],
           ),
         ),
         child: Padding(
@@ -733,60 +753,53 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                                 width: 1,
                               ),
                             ),
-                            child: _isGeneratingSuggestion
-                                ? const Center(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
+                            child:
+                                _isGeneratingSuggestion
+                                    ? const ModalSkeleton(
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                    )
+                                    : _aiSuggestion != null
+                                    ? _buildAiSuggestionWidget(_aiSuggestion!)
+                                    : Column(
                                       children: [
-                                        CircularProgressIndicator(
-                                          color: Color(0xFFE100FF),
-                                          strokeWidth: 2,
+                                        Container(
+                                          width: 48,
+                                          height: 48,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                const Color(
+                                                  0xFFE100FF,
+                                                ).withOpacity(0.2),
+                                                const Color(
+                                                  0xFF7F00FF,
+                                                ).withOpacity(0.2),
+                                              ],
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.psychology_outlined,
+                                            color: Color(0xFFE100FF),
+                                            size: 24,
+                                          ),
                                         ),
-                                        SizedBox(height: 12),
+                                        const SizedBox(height: 12),
                                         Text(
-                                          'Robin is analyzing your code...',
-                                          style: TextStyle(
-                                            color: Colors.white70,
+                                          'Run your code to get personalized feedback from Robin!',
+                                          textAlign: TextAlign.center,
+                                          style: GoogleFonts.poppins(
+                                            color: Colors.white.withOpacity(
+                                              0.7,
+                                            ),
+                                            fontStyle: FontStyle.italic,
                                             fontSize: 14,
                                           ),
                                         ),
                                       ],
                                     ),
-                                  )
-                                : _aiSuggestion != null
-                                    ? _buildAiSuggestionWidget(_aiSuggestion!)
-                                    : Column(
-                                        children: [
-                                          Container(
-                                            width: 48,
-                                            height: 48,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              gradient: LinearGradient(
-                                                colors: [
-                                                  const Color(0xFFE100FF).withOpacity(0.2),
-                                                  const Color(0xFF7F00FF).withOpacity(0.2),
-                                                ],
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.psychology_outlined,
-                                              color: Color(0xFFE100FF),
-                                              size: 24,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            'Run your code to get personalized feedback from Robin!',
-                                            textAlign: TextAlign.center,
-                                            style: GoogleFonts.poppins(
-                                              color: Colors.white.withOpacity(0.7),
-                                              fontStyle: FontStyle.italic,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
                           ),
                         ],
                       ),
@@ -902,12 +915,15 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ).copyWith(
-                                backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                  if (states.contains(MaterialState.hovered)) {
-                                    return const Color(0xFF00E676);
-                                  }
-                                  return const Color(0xFF00C851);
-                                }),
+                                backgroundColor:
+                                    MaterialStateProperty.resolveWith((states) {
+                                      if (states.contains(
+                                        MaterialState.hovered,
+                                      )) {
+                                        return const Color(0xFF00E676);
+                                      }
+                                      return const Color(0xFF00C851);
+                                    }),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -927,7 +943,8 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                             OutlinedButton(
                               onPressed: () {
                                 setState(() {
-                                  _codeController.text = widget.problem.solution;
+                                  _codeController.text =
+                                      widget.problem.solution;
                                 });
                               },
                               style: OutlinedButton.styleFrom(
@@ -944,12 +961,15 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                               ).copyWith(
-                                backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                  if (states.contains(MaterialState.hovered)) {
-                                    return Colors.white.withOpacity(0.1);
-                                  }
-                                  return Colors.transparent;
-                                }),
+                                backgroundColor:
+                                    MaterialStateProperty.resolveWith((states) {
+                                      if (states.contains(
+                                        MaterialState.hovered,
+                                      )) {
+                                        return Colors.white.withOpacity(0.1);
+                                      }
+                                      return Colors.transparent;
+                                    }),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -973,14 +993,18 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                             width: double.infinity,
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: _testResult.contains('passed')
-                                  ? const Color(0xFF00C851).withOpacity(0.1)
-                                  : Colors.red.withOpacity(0.1),
+                              color:
+                                  _testResult.contains('passed')
+                                      ? const Color(0xFF00C851).withOpacity(0.1)
+                                      : Colors.red.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: _testResult.contains('passed')
-                                    ? const Color(0xFF00C851).withOpacity(0.3)
-                                    : Colors.red.withOpacity(0.3),
+                                color:
+                                    _testResult.contains('passed')
+                                        ? const Color(
+                                          0xFF00C851,
+                                        ).withOpacity(0.3)
+                                        : Colors.red.withOpacity(0.3),
                                 width: 1,
                               ),
                             ),
@@ -990,18 +1014,20 @@ class _PracticeProblemDetailViewState extends ConsumerState<PracticeProblemDetai
                                   _testResult.contains('passed')
                                       ? Icons.check_circle_outline
                                       : Icons.error_outline,
-                                  color: _testResult.contains('passed')
-                                      ? const Color(0xFF00C851)
-                                      : Colors.red,
+                                  color:
+                                      _testResult.contains('passed')
+                                          ? const Color(0xFF00C851)
+                                          : Colors.red,
                                   size: 20,
                                 ),
                                 const SizedBox(width: 12),
                                 Text(
                                   _testResult,
                                   style: GoogleFonts.poppins(
-                                    color: _testResult.contains('passed')
-                                        ? const Color(0xFF00C851)
-                                        : Colors.red,
+                                    color:
+                                        _testResult.contains('passed')
+                                            ? const Color(0xFF00C851)
+                                            : Colors.red,
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                   ),

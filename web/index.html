@@ -31,6 +31,17 @@
 
   <title>codemate</title>
   <link rel="manifest" href="manifest.json">
+  <!-- WebContainers: import ESM and expose on window. COOP/COEP headers are required at runtime. -->
+  <script type="module">
+    try {
+      const { WebContainer } = await import('https://cdn.jsdelivr.net/npm/@webcontainer/api@1.1.7/dist/index.js');
+      // Expose as global for Dart JS interop (@JS('WebContainer.boot'))
+      window.WebContainer = WebContainer;
+    } catch (e) {
+      // Ignore if not available; the app will show a friendly message.
+      console.warn('WebContainer API not loaded:', e);
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

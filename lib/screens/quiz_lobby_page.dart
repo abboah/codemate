@@ -33,19 +33,23 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
 
   void _fetchAttempts() {
     // Use ref.read to fetch the data once and avoid rebuild loops.
-    _attemptsFuture = ref.read(quizAttemptsWithQuestionsProvider({
-      'enrollmentId': widget.enrollment.id,
-      'topicId': widget.topic.id,
-    }).future);
+    _attemptsFuture = ref.read(
+      quizAttemptsWithQuestionsProvider({
+        'enrollmentId': widget.enrollment.id,
+        'topicId': widget.topic.id,
+      }).future,
+    );
   }
 
   void _takeNewQuiz() async {
     setState(() => _isCreatingQuiz = true);
     try {
-      final questions = await ref.read(createQuizProvider({
-        'topic': widget.topic,
-        'enrollment': widget.enrollment,
-      }).future);
+      final questions = await ref.read(
+        createQuizProvider({
+          'topic': widget.topic,
+          'enrollment': widget.enrollment,
+        }).future,
+      );
 
       if (mounted) {
         // Pop the lobby and then show the quiz. When the lobby is reopened,
@@ -60,8 +64,9 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Failed to create quiz: $e'),
-              backgroundColor: Colors.red),
+            content: Text('Failed to create quiz: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -110,28 +115,6 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
             ),
             child: Stack(
               children: <Widget>[
-                // Close button (top-right)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).pop(),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white.withOpacity(0.1)),
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        size: 18,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ),
-                ),
                 Row(
                   children: <Widget>[
                     // Left Half - Description and Button
@@ -152,8 +135,12 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                     shape: BoxShape.circle,
                                     gradient: LinearGradient(
                                       colors: [
-                                        const Color(0xFF7F00FF).withOpacity(0.3),
-                                        const Color(0xFFE100FF).withOpacity(0.3),
+                                        const Color(
+                                          0xFF7F00FF,
+                                        ).withOpacity(0.3),
+                                        const Color(
+                                          0xFFE100FF,
+                                        ).withOpacity(0.3),
                                       ],
                                     ),
                                   ),
@@ -215,8 +202,12 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                           shape: BoxShape.circle,
                                           gradient: LinearGradient(
                                             colors: [
-                                              const Color(0xFF00C851).withOpacity(0.3),
-                                              const Color(0xFF007E33).withOpacity(0.3),
+                                              const Color(
+                                                0xFF00C851,
+                                              ).withOpacity(0.3),
+                                              const Color(
+                                                0xFF007E33,
+                                              ).withOpacity(0.3),
                                             ],
                                           ),
                                         ),
@@ -250,62 +241,87 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                   SizedBox(
                                     width: double.infinity,
                                     child: ElevatedButton(
-                                      onPressed: _isCreatingQuiz ? null : _takeNewQuiz,
+                                      onPressed:
+                                          _isCreatingQuiz ? null : _takeNewQuiz,
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: const Color(0xFF00C851),
+                                        backgroundColor: const Color(
+                                          0xFF00C851,
+                                        ),
                                         foregroundColor: Colors.white,
                                         elevation: 0,
-                                        padding: const EdgeInsets.symmetric(vertical: 16),
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 16,
+                                        ),
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(16),
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
                                         ),
                                       ).copyWith(
-                                        backgroundColor: MaterialStateProperty.resolveWith((states) {
-                                          if (states.contains(MaterialState.disabled)) {
-                                            return Colors.grey.withOpacity(0.3);
-                                          }
-                                          if (states.contains(MaterialState.hovered)) {
-                                            return const Color(0xFF00E676);
-                                          }
-                                          return const Color(0xFF00C851);
-                                        }),
+                                        backgroundColor:
+                                            MaterialStateProperty.resolveWith((
+                                              states,
+                                            ) {
+                                              if (states.contains(
+                                                MaterialState.disabled,
+                                              )) {
+                                                return Colors.grey.withOpacity(
+                                                  0.3,
+                                                );
+                                              }
+                                              if (states.contains(
+                                                MaterialState.hovered,
+                                              )) {
+                                                return const Color(0xFF00E676);
+                                              }
+                                              return const Color(0xFF00C851);
+                                            }),
                                       ),
-                                      child: _isCreatingQuiz
-                                          ? Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                const SizedBox(
-                                                  width: 16,
-                                                  height: 16,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: Colors.white,
+                                      child:
+                                          _isCreatingQuiz
+                                              ? Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const SizedBox(
+                                                    width: 16,
+                                                    height: 16,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Colors.white,
+                                                        ),
                                                   ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Text(
-                                                  'Creating Quiz...',
-                                                  style: GoogleFonts.poppins(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
+                                                  const SizedBox(width: 12),
+                                                  Text(
+                                                    'Creating Quiz...',
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
                                                   ),
-                                                ),
-                                              ],
-                                            )
-                                          : Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                const Icon(Icons.quiz, size: 20),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  'Take New Quiz',
-                                                  style: GoogleFonts.poppins(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w600,
+                                                ],
+                                              )
+                                              : Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment.center,
+                                                children: [
+                                                  const Icon(
+                                                    Icons.quiz,
+                                                    size: 20,
                                                   ),
-                                                ),
-                                              ],
-                                            ),
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    'Take New Quiz',
+                                                    style: GoogleFonts.poppins(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                     ),
                                   ),
                                 ],
@@ -336,7 +352,8 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                         child: FutureBuilder<List<QuizAttemptWithQuestions>>(
                           future: _attemptsFuture,
                           builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
+                            if (snapshot.connectionState ==
+                                ConnectionState.waiting) {
                               return const Center(
                                 child: SizedBox(
                                   width: 240,
@@ -354,7 +371,9 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                               );
                             }
                             if (snapshot.hasError) {
-                              return Center(child: Text('Error: ${snapshot.error}'));
+                              return Center(
+                                child: Text('Error: ${snapshot.error}'),
+                              );
                             }
                             final attempts = snapshot.data ?? [];
                             if (attempts.isEmpty) {
@@ -369,8 +388,12 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                         shape: BoxShape.circle,
                                         gradient: LinearGradient(
                                           colors: [
-                                            const Color(0xFF7F00FF).withOpacity(0.3),
-                                            const Color(0xFFE100FF).withOpacity(0.3),
+                                            const Color(
+                                              0xFF7F00FF,
+                                            ).withOpacity(0.3),
+                                            const Color(
+                                              0xFFE100FF,
+                                            ).withOpacity(0.3),
                                           ],
                                         ),
                                       ),
@@ -415,8 +438,12 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                           shape: BoxShape.circle,
                                           gradient: LinearGradient(
                                             colors: [
-                                              const Color(0xFF00A8FF).withOpacity(0.3),
-                                              const Color(0xFF0078FF).withOpacity(0.3),
+                                              const Color(
+                                                0xFF00A8FF,
+                                              ).withOpacity(0.3),
+                                              const Color(
+                                                0xFF0078FF,
+                                              ).withOpacity(0.3),
                                             ],
                                           ),
                                         ),
@@ -440,12 +467,20 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                                 ),
                                 Expanded(
                                   child: ListView.builder(
-                                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                                    padding: const EdgeInsets.fromLTRB(
+                                      24,
+                                      0,
+                                      24,
+                                      24,
+                                    ),
                                     itemCount: attempts.length,
                                     itemBuilder: (context, index) {
-                                      final attemptWithQuestions = attempts[index];
+                                      final attemptWithQuestions =
+                                          attempts[index];
                                       return QuizAttemptCard(
-                                          attemptWithQuestions: attemptWithQuestions);
+                                        attemptWithQuestions:
+                                            attemptWithQuestions,
+                                      );
                                     },
                                   ),
                                 ),
@@ -456,6 +491,30 @@ class _QuizLobbyPageState extends ConsumerState<QuizLobbyPage> {
                       ),
                     ),
                   ],
+                ),
+                // Close button (top-right) placed last to be on top for hit testing
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.1),
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -478,10 +537,7 @@ class QuizAttemptCard extends ConsumerWidget {
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.1),
-          width: 1,
-        ),
+        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
       ),
       child: Material(
         color: Colors.transparent,
@@ -492,8 +548,13 @@ class QuizAttemptCard extends ConsumerWidget {
               Navigator.of(context).pop(); // Close the lobby
               showDialog(
                 context: context,
-                builder: (context) => QuizView(
-                    questions: attemptWithQuestions.questions.map((q) => q.toMap()).toList()),
+                builder:
+                    (context) => QuizView(
+                      questions:
+                          attemptWithQuestions.questions
+                              .map((q) => q.toMap())
+                              .toList(),
+                    ),
               );
             }
           },
@@ -534,7 +595,9 @@ class QuizAttemptCard extends ConsumerWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        DateFormat.yMMMd().add_jm().format(attemptWithQuestions.attempt.createdAt),
+                        DateFormat.yMMMd().add_jm().format(
+                          attemptWithQuestions.attempt.createdAt,
+                        ),
                         style: GoogleFonts.poppins(
                           color: Colors.white.withOpacity(0.7),
                           fontSize: 14,

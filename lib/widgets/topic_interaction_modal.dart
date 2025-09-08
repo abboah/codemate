@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:codemate/providers/learn_provider.dart';
 import 'package:codemate/screens/quiz_lobby_page.dart';
-import 'package:codemate/widgets/animated_loading_indicator.dart';
+// removed unused animated_loading_indicator import
+import 'package:codemate/widgets/fancy_loader.dart';
 import 'package:codemate/widgets/code_block_builder.dart';
 import 'package:codemate/widgets/inline_code_builder.dart';
 import 'package:codemate/widgets/notes_viewer_modal.dart';
-import 'package:codemate/widgets/quiz_view.dart';
+// removed unused quiz_view import
 import 'package:codemate/widgets/topic_chat_modal.dart';
 import 'package:codemate/widgets/fun_fact_modal.dart';
 import 'package:codemate/widgets/practice_problem_modal.dart';
@@ -15,10 +16,9 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:ui';
-import 'package:codemate/themes/colors.dart';
+// removed unused colors import
 
 enum NotesScreenState { fetching, generating, loaded, error }
-
 
 class TopicInteractionModal extends ConsumerStatefulWidget {
   final Topic topic;
@@ -31,7 +31,8 @@ class TopicInteractionModal extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<TopicInteractionModal> createState() => _TopicInteractionModalState();
+  ConsumerState<TopicInteractionModal> createState() =>
+      _TopicInteractionModalState();
 }
 
 class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
@@ -63,10 +64,12 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
     if (widget.enrollment == null) return;
 
     try {
-      final existingNotes = await ref.read(topicNotesProvider({
-        'enrollmentId': widget.enrollment!.id,
-        'topicId': widget.topic.id,
-      }).future);
+      final existingNotes = await ref.read(
+        topicNotesProvider({
+          'enrollmentId': widget.enrollment!.id,
+          'topicId': widget.topic.id,
+        }).future,
+      );
 
       if (existingNotes.isNotEmpty) {
         print('[ModalLifecycle] Notes found in database.');
@@ -79,11 +82,13 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
       } else {
         print('[ModalLifecycle] No notes found. Triggering generation...');
         if (mounted) setState(() => _screenState = NotesScreenState.generating);
-        
-        final newNotes = await ref.read(createNotesProvider({
-          'topic': widget.topic,
-          'enrollment': widget.enrollment!,
-        }).future);
+
+        final newNotes = await ref.read(
+          createNotesProvider({
+            'topic': widget.topic,
+            'enrollment': widget.enrollment!,
+          }).future,
+        );
 
         print('[ModalLifecycle] Note generation complete.');
         if (mounted) {
@@ -106,7 +111,9 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
 
   @override
   Widget build(BuildContext context) {
-    print('[TopicInteractionModal] Build triggered. Screen state: $_screenState');
+    print(
+      '[TopicInteractionModal] Build triggered. Screen state: $_screenState',
+    );
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
       child: Dialog(
@@ -173,7 +180,11 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.menu_book_rounded, color: Colors.white, size: 24),
+                          child: const Icon(
+                            Icons.menu_book_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -270,10 +281,11 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
             showDialog(
               context: context,
               barrierDismissible: false,
-              builder: (context) => QuizLobbyPage(
-                topic: widget.topic,
-                enrollment: widget.enrollment!,
-              ),
+              builder:
+                  (context) => QuizLobbyPage(
+                    topic: widget.topic,
+                    enrollment: widget.enrollment!,
+                  ),
             );
           },
           isBlurred: !isEnrolled || !notesExist,
@@ -285,11 +297,12 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
           onTap: () {
             showDialog(
               context: context,
-              builder: (context) => TopicChatModal(
-                topic: widget.topic,
-                enrollment: widget.enrollment!,
-                notes: _notes,
-              ),
+              builder:
+                  (context) => TopicChatModal(
+                    topic: widget.topic,
+                    enrollment: widget.enrollment!,
+                    notes: _notes,
+                  ),
             );
           },
           isBlurred: !isEnrolled || !notesExist,
@@ -315,7 +328,11 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
               builder: (context) => SuggestedProjectsModal(topic: widget.topic),
             );
           },
-          gradientColors: const [Color(0xFFFFAF7B), Color(0xFFD76D77), Color(0xFF3A1C71)],
+          gradientColors: const [
+            Color(0xFFFFAF7B),
+            Color(0xFFD76D77),
+            Color(0xFF3A1C71),
+          ],
         ),
         _buildActionButton(
           icon: Icons.fitness_center_outlined,
@@ -335,11 +352,26 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
   Widget _buildNotesSection() {
     switch (_screenState) {
       case NotesScreenState.fetching:
-        return const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('Fetching notes...')]));
+        return const ModalSkeleton();
       case NotesScreenState.generating:
-        return const AnimatedLoadingIndicator();
+        return const ModalSkeleton();
       case NotesScreenState.error:
-        return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Text('Error: $_errorMessage', style: const TextStyle(color: Colors.red)), const SizedBox(height: 16), ElevatedButton(onPressed: _fetchOrGenerateNotes, child: const Text('Retry'))]));
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Error: $_errorMessage',
+                style: const TextStyle(color: Colors.red),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _fetchOrGenerateNotes,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        );
       case NotesScreenState.loaded:
         return _buildNotesPreview(_notes);
     }
@@ -387,7 +419,10 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
               children: [
                 Text(
                   notes.first.title,
-                  style: GoogleFonts.poppins(fontWeight: FontWeight.bold, color: Colors.white),
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 const Icon(Icons.open_in_full, color: Colors.white70),
               ],
@@ -400,11 +435,26 @@ class _TopicInteractionModalState extends ConsumerState<TopicInteractionModal> {
                   'pre': CodeBlockBuilder(),
                   'code': InlineCodeBuilder(),
                 },
-                styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-                  p: GoogleFonts.poppins(color: Colors.white70, fontSize: 14, height: 1.5),
-                  h1: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
-                  h2: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
-                  h3: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.bold),
+                styleSheet: MarkdownStyleSheet.fromTheme(
+                  Theme.of(context),
+                ).copyWith(
+                  p: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  h1: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h2: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  h3: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                   listBullet: GoogleFonts.poppins(color: Colors.white70),
                   blockquote: GoogleFonts.poppins(color: Colors.white70),
                 ),
@@ -463,15 +513,18 @@ class _ActionTileState extends State<_ActionTile> {
 
   @override
   Widget build(BuildContext context) {
-    final tileColor = widget.disabled
-        ? Colors.white.withOpacity(0.02)
-        : Colors.white.withOpacity(0.06);
-    final borderColor = widget.disabled
-        ? Colors.white.withOpacity(0.06)
-        : Colors.white.withOpacity(0.12);
-    final iconGradient = widget.disabled 
-        ? widget.gradientColors.map((c) => c.withOpacity(0.3)).toList()
-        : widget.gradientColors;
+    final tileColor =
+        widget.disabled
+            ? Colors.white.withOpacity(0.02)
+            : Colors.white.withOpacity(0.06);
+    final borderColor =
+        widget.disabled
+            ? Colors.white.withOpacity(0.06)
+            : Colors.white.withOpacity(0.12);
+    final iconGradient =
+        widget.disabled
+            ? widget.gradientColors.map((c) => c.withOpacity(0.3)).toList()
+            : widget.gradientColors;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -488,31 +541,29 @@ class _ActionTileState extends State<_ActionTile> {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                tileColor,
-                Colors.white.withOpacity(0.02),
-              ],
+              colors: [tileColor, Colors.white.withOpacity(0.02)],
             ),
-            boxShadow: _hovered && widget.onTap != null
-                ? [
-                    BoxShadow(
-                      color: iconGradient.first.withOpacity(0.3),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 2,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
+            boxShadow:
+                _hovered && widget.onTap != null
+                    ? [
+                      BoxShadow(
+                        color: iconGradient.first.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                    : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.05),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
           ),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
@@ -520,50 +571,50 @@ class _ActionTileState extends State<_ActionTile> {
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               child: Center(
-                child: widget.loading
-                    ? SizedBox(
-                        height: 22, 
-                        width: 22, 
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(iconGradient.first),
-                        ),
-                      )
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: iconGradient,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: iconGradient.first.withOpacity(0.4),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
+                child:
+                    widget.loading
+                        ? WaveLoader(size: 22, color: iconGradient.first)
+                        : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: iconGradient,
                                 ),
-                              ],
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: iconGradient.first.withOpacity(0.4),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                widget.icon,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                             ),
-                            child: Icon(widget.icon, color: Colors.white, size: 16),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            widget.label,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white.withOpacity(widget.disabled ? 0.5 : 0.9),
+                            const SizedBox(height: 8),
+                            Text(
+                              widget.label,
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white.withOpacity(
+                                  widget.disabled ? 0.5 : 0.9,
+                                ),
+                              ),
+                              textAlign: TextAlign.center,
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
               ),
             ),
           ),

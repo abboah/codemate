@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "serve:web": "node devserver.js 8080 build/web"
+  },
   "dependencies": {
     "supabase": "^2.33.9"
   }

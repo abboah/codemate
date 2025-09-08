@@ -46,7 +46,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       'afternoon': [
         'Good afternoon,',
         "Hope you're having a great day,",
-        'Keep up the great work,'
+        'Keep up the great work,',
       ],
       'evening': ['Good evening,', 'Time to wind down,', 'The night is young,'],
     };
@@ -88,74 +88,161 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF0A0A0D),
-              Color(0xFF121216),
-              Color(0xFF1A1A20),
-            ],
+            colors: [Color(0xFF0A0A0D), Color(0xFF121216), Color(0xFF1A1A20)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             stops: [0.0, 0.5, 1.0],
           ),
         ),
-        child: Row(
-        children: [
-          PremiumSidebar(
-            items: [
-              PremiumSidebarItem(icon: Icons.home, label: 'Home', onTap: () {} , selected: true),
-              PremiumSidebarItem(icon: Icons.play_arrow_rounded, label: 'Playground', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const PlaygroundPage()));
-              }),
-              PremiumSidebarItem(icon: Icons.construction_rounded, label: 'Build', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const BuildPage()));
-              }),
-              PremiumSidebarItem(icon: Icons.school_rounded, label: 'Learn', onTap: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const LearnPage()));
-              }),
-            ],
-            topPadding: 20,
-          ),
-          Expanded(
-            child: Stack(
+        child: Stack(
+          children: [
+            // Enhanced animated background particles
+            _buildAnimatedParticles(),
+            Row(
               children: [
-                _buildGlowEffect(context),
-                SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      children: [
-                        _buildTopBar(context, initials, widget.profile.fullName),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 80), // Moves content up by adding bottom padding
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                _buildGreeting(widget.profile.username),
-                                const SizedBox(height: 40),
-                                _buildActionButtons(context, projectsCount, coursesCount),
-                                const SizedBox(height: 28),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.3),
-                                    child: _HomeInputBar(),
+                PremiumSidebar(
+                  items: [
+                    PremiumSidebarItem(
+                      icon: Icons.home,
+                      label: 'Home',
+                      onTap: () {},
+                      selected: true,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Playground',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PlaygroundPage(),
+                          ),
+                        );
+                      },
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.construction_rounded,
+                      label: 'Build',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const BuildPage()),
+                        );
+                      },
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.school_rounded,
+                      label: 'Learn',
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LearnPage()),
+                        );
+                      },
+                    ),
+                  ],
+                  topPadding: 20,
+                ),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      _buildGlowEffect(context),
+                      SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                          child: Column(
+                            children: [
+                              _buildTopBar(
+                                context,
+                                initials,
+                                widget.profile.fullName,
+                              ),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(
+                                    bottom: 80,
+                                  ), // Moves content up by adding bottom padding
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      _buildGreeting(widget.profile.username),
+                                      const SizedBox(height: 40),
+                                      _buildActionButtons(
+                                        context,
+                                        projectsCount,
+                                        coursesCount,
+                                      ),
+                                      const SizedBox(height: 28),
+                                      Align(
+                                        alignment: Alignment.center,
+                                        child: ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            maxWidth:
+                                                MediaQuery.of(
+                                                  context,
+                                                ).size.width *
+                                                0.3,
+                                          ),
+                                          child: _HomeInputBar(),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildAnimatedParticles() {
+    return Stack(
+      children: List.generate(12, (index) {
+        final random = Random(index);
+        final size = 2.0 + random.nextDouble() * 4;
+        final opacity = 0.1 + random.nextDouble() * 0.3;
+        final duration = 3000 + random.nextInt(4000);
+
+        return AnimatedPositioned(
+          duration: Duration(milliseconds: duration),
+          left: random.nextDouble() * MediaQuery.of(context).size.width,
+          top: random.nextDouble() * MediaQuery.of(context).size.height,
+          child: AnimatedOpacity(
+            duration: Duration(milliseconds: duration ~/ 2),
+            opacity: opacity,
+            child: Container(
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.accent.withOpacity(opacity),
+                    Colors.transparent,
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withOpacity(opacity * 0.5),
+                    blurRadius: size * 2,
+                    spreadRadius: size * 0.5,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -233,10 +320,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
-                colors: [
-                  Colors.white.withOpacity(0.03),
-                  Colors.transparent,
-                ],
+                colors: [Colors.white.withOpacity(0.03), Colors.transparent],
                 stops: const [0.0, 1.0],
               ),
             ),
@@ -268,8 +352,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           IconButton(
-            icon: Icon(Icons.notifications_none_rounded,
-                color: Colors.white.withOpacity(0.8), size: 28),
+            icon: Icon(
+              Icons.notifications_none_rounded,
+              color: Colors.white.withOpacity(0.8),
+              size: 28,
+            ),
             onPressed: () {},
           ),
           const SizedBox(width: 12),
@@ -303,28 +390,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildGreeting(String name) {
     return Column(
       children: [
-        Text(
-          _getGreeting(),
-          style: GoogleFonts.poppins(
-            fontSize: 42,
-            fontWeight: FontWeight.w500,
-            color: Colors.white.withOpacity(0.8),
+        // Gradient animated greeting
+        ShaderMask(
+          shaderCallback:
+              (bounds) => const LinearGradient(
+                colors: [
+                  Color(0xFF6366F1),
+                  Color(0xFF8B5CF6),
+                  Color(0xFFEC4899),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds),
+          child: Text(
+            _getGreeting(),
+            style: GoogleFonts.poppins(
+              fontSize: 42,
+              fontWeight: FontWeight.w500,
+              color: Colors.white,
+            ),
           ),
         ),
-        Text(
-          '$name!',
-          style: GoogleFonts.poppins(
-            fontSize: 42,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
+        // Enhanced name with glow effect
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accent.withOpacity(0.2),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: ShaderMask(
+            shaderCallback:
+                (bounds) => const LinearGradient(
+                  colors: [Colors.white, Color(0xFFE0E7FF)],
+                ).createShader(bounds),
+            child: Text(
+              '$name!',
+              style: GoogleFonts.poppins(
+                fontSize: 42,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),
-        Text(
-          _getSecondaryGreeting(),
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            color: Colors.white70,
+        // Enhanced subtitle with subtle animation
+        AnimatedOpacity(
+          duration: const Duration(milliseconds: 800),
+          opacity: 1.0,
+          child: Text(
+            _getSecondaryGreeting(),
+            style: GoogleFonts.poppins(
+              fontSize: 20,
+              color: Colors.white.withOpacity(0.8),
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ),
       ],
@@ -332,7 +458,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildActionButtons(
-      BuildContext context, int projectsCount, int coursesCount) {
+    BuildContext context,
+    int projectsCount,
+    int coursesCount,
+  ) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -379,50 +508,99 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       message: tooltip,
       child: Column(
         children: [
-          InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(24),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 140,
-                  height: 140,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
-                  child: Icon(icon, color: Colors.white, size: 56),
-                ),
-                if (badgeCount > 0)
-                  Positioned(
-                    top: -5,
-                    right: -5,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accent,
-                      ),
-                      child: Text(
-                        badgeCount.toString(),
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(28),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Enhanced glass morphism container
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(28),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(28),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.15),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.accent.withOpacity(0.1),
+                                blurRadius: 30,
+                                spreadRadius: 5,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 15,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(28),
+                              gradient: RadialGradient(
+                                colors: [
+                                  Colors.white.withOpacity(0.1),
+                                  Colors.transparent,
+                                ],
+                                stops: const [0.3, 1.0],
+                              ),
+                            ),
+                            child: Icon(icon, color: Colors.white, size: 56),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                    if (badgeCount > 0)
+                      Positioned(
+                        right: -8,
+                        top: -8,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFEC4899), Color(0xFFEF4444)],
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFFEC4899).withOpacity(0.4),
+                                blurRadius: 12,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            badgeCount.toString(),
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Text(
             label,
             style: GoogleFonts.poppins(
-              color: Colors.white.withOpacity(0.8),
+              color: Colors.white.withOpacity(0.9),
               fontSize: 18,
               fontWeight: FontWeight.w500,
             ),
@@ -443,12 +621,15 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   final FocusNode _focusNode = FocusNode();
   final List<Map<String, dynamic>> _attachments = [];
   bool _sending = false;
-  bool _uploading = false; // show 'Processing attachments…' while uploading on send
+  bool _uploading =
+      false; // show 'Processing attachments…' while uploading on send
   OverlayEntry? _imageHoverOverlay;
 
   @override
   void dispose() {
-    try { _imageHoverOverlay?.remove(); } catch (_) {}
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -461,7 +642,8 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (lower.endsWith('.webp')) return 'image/webp';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.pdf')) return 'application/pdf';
-    if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'text/markdown';
+    if (lower.endsWith('.md') || lower.endsWith('.markdown'))
+      return 'text/markdown';
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.html') || lower.endsWith('.htm')) return 'text/html';
     if (lower.endsWith('.xml')) return 'application/xml';
@@ -474,8 +656,17 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     // Allowed extensions
     const allowed = {
       'pdf',
-      'png', 'jpg', 'jpeg', 'webp', 'gif',
-      'txt', 'md', 'markdown', 'html', 'htm', 'xml',
+      'png',
+      'jpg',
+      'jpeg',
+      'webp',
+      'gif',
+      'txt',
+      'md',
+      'markdown',
+      'html',
+      'htm',
+      'xml',
     };
 
     final result = await FilePicker.platform.pickFiles(
@@ -490,7 +681,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (remaining <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('You can attach up to 3 files.', style: GoogleFonts.poppins()),
+          content: Text(
+            'You can attach up to 3 files.',
+            style: GoogleFonts.poppins(),
+          ),
         ),
       );
       return;
@@ -499,7 +693,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     for (final f in result.files.take(remaining)) {
       if (f.bytes == null) continue;
       final ext = (f.extension ?? f.name.split('.').last).toLowerCase();
-      if (!allowed.contains(ext)) { rejected++; continue; }
+      if (!allowed.contains(ext)) {
+        rejected++;
+        continue;
+      }
       _attachments.add({
         'bytes': f.bytes!,
         'mime_type': _guessMime(f.name),
@@ -508,7 +705,12 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     }
     if (rejected > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Some files were rejected (unsupported type).', style: GoogleFonts.poppins())),
+        SnackBar(
+          content: Text(
+            'Some files were rejected (unsupported type).',
+            style: GoogleFonts.poppins(),
+          ),
+        ),
       );
     }
     setState(() {});
@@ -519,13 +721,15 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
   }
 
   void _removeImageHoverOverlay() {
-    try { _imageHoverOverlay?.remove(); } catch (_) {}
+    try {
+      _imageHoverOverlay?.remove();
+    } catch (_) {}
     _imageHoverOverlay = null;
   }
 
   void _showImageHoverOverlayForPill(BuildContext pillContext, String url) {
     _removeImageHoverOverlay();
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.maybeOf(context);
     if (overlay == null) return;
 
     final renderObject = pillContext.findRenderObject();
@@ -543,95 +747,105 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     if (top < 8) top = topLeft.dy + size.height + 8;
 
     _imageHoverOverlay = OverlayEntry(
-      builder: (ctx) => Positioned(
-        left: left,
-        top: top,
-        width: previewW,
-        height: previewH,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+      builder:
+          (ctx) => Positioned(
+            left: left,
+            top: top,
+            width: previewW,
+            height: previewH,
+            child: IgnorePointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(url, width: previewW, height: previewH, fit: BoxFit.cover),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-    overlay.insert(_imageHoverOverlay!);
-  }
-
-  void _showImageHoverOverlayForPillBytes(BuildContext pillContext, List<int> bytes) {
-    _removeImageHoverOverlay();
-    final overlay = Overlay.of(context);
-    if (overlay == null) return;
-
-    final renderObject = pillContext.findRenderObject();
-    if (renderObject is! RenderBox) return;
-    final topLeft = renderObject.localToGlobal(Offset.zero);
-    final size = renderObject.size;
-    final screen = MediaQuery.of(context).size;
-
-    const previewW = 220.0;
-    const previewH = 160.0;
-    double left = topLeft.dx;
-    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
-    if (left < 8) left = 8;
-    double top = topLeft.dy - previewH - 8;
-    if (top < 8) top = topLeft.dy + size.height + 8;
-
-    _imageHoverOverlay = OverlayEntry(
-      builder: (ctx) => Positioned(
-        left: left,
-        top: top,
-        width: previewW,
-        height: previewH,
-        child: IgnorePointer(
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.92),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.12)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.45),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      url,
+                      width: previewW,
+                      height: previewH,
+                      fit: BoxFit.cover,
+                    ),
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.all(8),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  (bytes is List<int>) ? Uint8List.fromList(bytes) : (bytes as Uint8List),
-                  width: previewW,
-                  height: previewH,
-                  fit: BoxFit.cover,
                 ),
               ),
             ),
           ),
-        ),
-      ),
+    );
+    overlay.insert(_imageHoverOverlay!);
+  }
+
+  void _showImageHoverOverlayForPillBytes(
+    BuildContext pillContext,
+    List<int> bytes,
+  ) {
+    _removeImageHoverOverlay();
+    final overlay = Overlay.maybeOf(context);
+    if (overlay == null) return;
+
+    final renderObject = pillContext.findRenderObject();
+    if (renderObject is! RenderBox) return;
+    final topLeft = renderObject.localToGlobal(Offset.zero);
+    final size = renderObject.size;
+    final screen = MediaQuery.of(context).size;
+
+    const previewW = 220.0;
+    const previewH = 160.0;
+    double left = topLeft.dx;
+    if (left + previewW > screen.width - 8) left = screen.width - 8 - previewW;
+    if (left < 8) left = 8;
+    double top = topLeft.dy - previewH - 8;
+    if (top < 8) top = topLeft.dy + size.height + 8;
+
+    _imageHoverOverlay = OverlayEntry(
+      builder:
+          (ctx) => Positioned(
+            left: left,
+            top: top,
+            width: previewW,
+            height: previewH,
+            child: IgnorePointer(
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.45),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  padding: const EdgeInsets.all(8),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      Uint8List.fromList(bytes),
+                      width: previewW,
+                      height: previewH,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
     );
     overlay.insert(_imageHoverOverlay!);
   }
@@ -640,32 +854,50 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F1420),
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 840),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: const Color(0xFF0F1420),
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 840),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.image_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
                   ),
-                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(bytes, fit: BoxFit.contain)),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -673,32 +905,50 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
     showDialog(
       context: context,
       barrierColor: Colors.black87,
-      builder: (ctx) => Dialog(
-        backgroundColor: const Color(0xFF0F1420),
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 840),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
+      builder:
+          (ctx) => Dialog(
+            backgroundColor: const Color(0xFF0F1420),
+            insetPadding: const EdgeInsets.all(16),
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 840),
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.image_outlined, color: Colors.white70, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(title, style: GoogleFonts.poppins(color: Colors.white, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.image_outlined,
+                        color: Colors.white70,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        icon: const Icon(Icons.close, color: Colors.white70),
+                      ),
+                    ],
                   ),
-                  IconButton(onPressed: () => Navigator.of(ctx).pop(), icon: const Icon(Icons.close, color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(url, fit: BoxFit.contain)),
-            ],
+            ),
           ),
-        ),
-      ),
     );
   }
 
@@ -717,11 +967,15 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
       final client = Supabase.instance.client;
       final List<Map<String, dynamic>> out = [];
 
-      final hasUploadables = _attachments.any((a) => a['bytes'] is Uint8List || a['bytes'] is List<int>);
+      final hasUploadables = _attachments.any(
+        (a) => a['bytes'] is Uint8List || a['bytes'] is List<int>,
+      );
       if (hasUploadables) setState(() => _uploading = true);
 
       // Already-uploaded items (rare in Home after this refactor)
-      for (final a in _attachments.where((a) => a.containsKey('bucket') && a.containsKey('path'))) {
+      for (final a in _attachments.where(
+        (a) => a.containsKey('bucket') && a.containsKey('path'),
+      )) {
         final path = a['path'] as String;
         final signedUrl = await _createSignedUrl(client, path);
         final bucket = (a['bucket'] as String?) ?? 'user-uploads';
@@ -731,13 +985,17 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
           'mime_type': a['mime_type'],
           'file_name': a['file_name'],
           if (signedUrl != null) 'signedUrl': signedUrl,
-          if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+          if (signedUrl != null)
+            'bucket_url':
+                signedUrl, // backend will sanitize to real bucket path
           if (signedUrl != null) 'uri': signedUrl,
         });
       }
 
       // Items that only have a bucket_url
-      for (final a in _attachments.where((a) => !a.containsKey('path') && (a['bucket_url'] is String))) {
+      for (final a in _attachments.where(
+        (a) => !a.containsKey('path') && (a['bucket_url'] is String),
+      )) {
         final bukUrl = (a['bucket_url'] as String?) ?? '';
         out.add({
           'bucket_url': bukUrl,
@@ -749,20 +1007,28 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
       }
 
       // Upload raw bytes now
-      for (final a in _attachments.where((a) => !(a.containsKey('bucket') && a.containsKey('path')))) {
+      for (final a in _attachments.where(
+        (a) => !(a.containsKey('bucket') && a.containsKey('path')),
+      )) {
         final bytes = a['bytes'];
         final mime = (a['mime_type'] as String?) ?? 'application/octet-stream';
         final name = (a['file_name'] as String?) ?? 'file';
         if (bytes is Uint8List || bytes is List<int>) {
           try {
-            final data = (bytes is Uint8List) ? bytes : Uint8List.fromList(bytes as List<int>);
+            final data =
+                (bytes is Uint8List)
+                    ? bytes
+                    : Uint8List.fromList(bytes as List<int>);
             final folder = 'home/uploads';
-            final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
-            await client.storage.from('user-uploads').uploadBinary(
-              path,
-              data,
-              fileOptions: FileOptions(contentType: mime, upsert: true),
-            );
+            final path =
+                '$folder/${DateTime.now().millisecondsSinceEpoch}_$name';
+            await client.storage
+                .from('user-uploads')
+                .uploadBinary(
+                  path,
+                  data,
+                  fileOptions: FileOptions(contentType: mime, upsert: true),
+                );
             final signedUrl = await _createSignedUrl(client, path);
             const bucket = 'user-uploads';
             out.add({
@@ -771,13 +1037,20 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
               'mime_type': mime,
               'file_name': name,
               if (signedUrl != null) 'signedUrl': signedUrl,
-              if (signedUrl != null) 'bucket_url': signedUrl, // backend will sanitize to real bucket path
+              if (signedUrl != null)
+                'bucket_url':
+                    signedUrl, // backend will sanitize to real bucket path
               if (signedUrl != null) 'uri': signedUrl,
             });
           } catch (e) {
             // Skip adding the file if upload fails; surface a subtle toast.
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to upload $name', style: GoogleFonts.poppins())),
+              SnackBar(
+                content: Text(
+                  'Failed to upload $name',
+                  style: GoogleFonts.poppins(),
+                ),
+              ),
             );
           }
         }
@@ -803,16 +1076,31 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
 
   @override
   Widget build(BuildContext context) {
-  return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.15),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.accent.withOpacity(0.1),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -820,68 +1108,110 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
               // Top layer: input area (and attachments chips)
               if (_attachments.isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8.0, left: 4, right: 4),
+                  padding: const EdgeInsets.only(
+                    bottom: 8.0,
+                    left: 4,
+                    right: 4,
+                  ),
                   child: Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
                       for (int i = 0; i < _attachments.length; i++)
-                        Builder(builder: (pillCtx) {
-                          final a = _attachments[i];
-                          final name = a['file_name'] as String? ?? 'file';
-                          final mime = a['mime_type'] as String? ?? 'application/octet-stream';
-                          final isImage = mime.startsWith('image/');
-                          final bytes = a['bytes'] as Uint8List?;
-                          final signedUrl = a['signedUrl'] as String?;
-                          final bucketUrl = a['bucket_url'] as String?;
-                          final url = (signedUrl != null && signedUrl.isNotEmpty)
-                              ? signedUrl
-                              : ((bucketUrl != null && bucketUrl.isNotEmpty) ? bucketUrl : null);
-                          final pill = Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.08),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(color: Colors.white.withOpacity(0.12)),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(isImage ? Icons.image_outlined : Icons.attach_file, color: Colors.white70, size: 14),
-                                const SizedBox(width: 6),
-                                Text(name, style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12)),
-                                const SizedBox(width: 8),
-                                GestureDetector(
-                                  onTap: () => _removeAttachmentAt(i),
-                                  child: const Icon(Icons.close, color: Colors.white60, size: 14),
-                                )
-                              ],
-                            ),
-                          );
-                          if (isImage && bytes != null) {
-                            return MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              onEnter: (_) => _showImageHoverOverlayForPillBytes(pillCtx, bytes),
-                              onExit: (_) => _removeImageHoverOverlay(),
-                              child: GestureDetector(
-                                onTap: () => _showImageModalBytes(bytes, name),
-                                child: pill,
+                        Builder(
+                          builder: (pillCtx) {
+                            final a = _attachments[i];
+                            final name = a['file_name'] as String? ?? 'file';
+                            final mime =
+                                a['mime_type'] as String? ??
+                                'application/octet-stream';
+                            final isImage = mime.startsWith('image/');
+                            final bytes = a['bytes'] as Uint8List?;
+                            final signedUrl = a['signedUrl'] as String?;
+                            final bucketUrl = a['bucket_url'] as String?;
+                            final url =
+                                (signedUrl != null && signedUrl.isNotEmpty)
+                                    ? signedUrl
+                                    : ((bucketUrl != null &&
+                                            bucketUrl.isNotEmpty)
+                                        ? bucketUrl
+                                        : null);
+                            final pill = Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    isImage
+                                        ? Icons.image_outlined
+                                        : Icons.attach_file,
+                                    color: Colors.white70,
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    name,
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () => _removeAttachmentAt(i),
+                                    child: const Icon(
+                                      Icons.close,
+                                      color: Colors.white60,
+                                      size: 14,
+                                    ),
+                                  ),
+                                ],
                               ),
                             );
-                          } else if (isImage && url != null) {
-                            return MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              onEnter: (_) => _showImageHoverOverlayForPill(pillCtx, url),
-                              onExit: (_) => _removeImageHoverOverlay(),
-                              child: GestureDetector(
-                                onTap: () => _showImageModal(url, name),
-                                child: pill,
-                              ),
-                            );
-                          } else {
-                            return pill;
-                          }
-                        }),
+                            if (isImage && bytes != null) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter:
+                                    (_) => _showImageHoverOverlayForPillBytes(
+                                      pillCtx,
+                                      bytes,
+                                    ),
+                                onExit: (_) => _removeImageHoverOverlay(),
+                                child: GestureDetector(
+                                  onTap:
+                                      () => _showImageModalBytes(bytes, name),
+                                  child: pill,
+                                ),
+                              );
+                            } else if (isImage && url != null) {
+                              return MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter:
+                                    (_) => _showImageHoverOverlayForPill(
+                                      pillCtx,
+                                      url,
+                                    ),
+                                onExit: (_) => _removeImageHoverOverlay(),
+                                child: GestureDetector(
+                                  onTap: () => _showImageModal(url, name),
+                                  child: pill,
+                                ),
+                              );
+                            } else {
+                              return pill;
+                            }
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -896,29 +1226,82 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                   hintStyle: TextStyle(color: Colors.white.withOpacity(0.55)),
                   border: InputBorder.none,
                 ),
-                onSubmitted: (_) => (_sending || _uploading) ? null : _send(context),
+                onSubmitted:
+                    (_) => (_sending || _uploading) ? null : _send(context),
               ),
               const SizedBox(height: 8),
               // Bottom layer: attach + send row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(children: [
-                    IconButton(
-                      onPressed: (_sending || _uploading) ? null : _pickFiles,
-                      icon: const Icon(Icons.add_circle_outline, color: Colors.white70),
+                  Row(
+                    children: [
+                      // Enhanced attach button
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white.withOpacity(0.08),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 1,
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed:
+                              (_sending || _uploading) ? null : _pickFiles,
+                          icon: const Icon(
+                            Icons.attach_file_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
+                          tooltip: 'Attach files',
+                        ),
+                      ),
+                    ],
+                  ),
+                  // Enhanced send button
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                  ]),
-                  ElevatedButton(
-                    onPressed: (_sending || _uploading) ? null : () => _send(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      padding: const EdgeInsets.all(12),
+                    child: ElevatedButton(
+                      onPressed:
+                          (_sending || _uploading)
+                              ? null
+                              : () => _send(context),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                      child:
+                          (_sending || _uploading)
+                              ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: MiniWave(size: 22, color: Colors.white),
+                              )
+                              : const Icon(
+                                Icons.rocket_launch,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                     ),
-                    child: (_sending || _uploading)
-                        ? const SizedBox(width: 22, height: 22, child: MiniWave(size: 22))
-                        : const Icon(Icons.arrow_upward, color: Colors.white),
                   ),
                 ],
               ),
@@ -927,7 +1310,10 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     'Processing attachments…',
-                    style: GoogleFonts.poppins(color: Colors.white70, fontSize: 12),
+                    style: GoogleFonts.poppins(
+                      color: Colors.white70,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
             ],
@@ -939,7 +1325,9 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
 
   Future<String?> _createSignedUrl(SupabaseClient client, String path) async {
     try {
-      final dynamic resp = await client.storage.from('user-uploads').createSignedUrl(path, 60 * 60);
+      final dynamic resp = await client.storage
+          .from('user-uploads')
+          .createSignedUrl(path, 60 * 60);
       if (resp is String) return resp;
       if (resp is Map) {
         final v1 = resp['signedUrl'];
@@ -949,7 +1337,8 @@ class _HomeInputBarState extends ConsumerState<_HomeInputBar> {
         final v3 = resp['url'];
         if (v3 is String) return v3;
         final data = resp['data'];
-        if (data is Map && data['signedUrl'] is String) return data['signedUrl'] as String;
+        if (data is Map && data['signedUrl'] is String)
+          return data['signedUrl'] as String;
       }
     } catch (_) {}
     return null;

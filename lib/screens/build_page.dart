@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:codemate/widgets/fancy_loader.dart';
 
 class BuildPage extends ConsumerStatefulWidget {
   const BuildPage({super.key});
@@ -26,9 +27,9 @@ class _BuildPageState extends ConsumerState<BuildPage> {
   }
 
   void _navigateToCreateProject() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (context) => const BuildPageLanding()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (context) => const BuildPageLanding()));
   }
 
   @override
@@ -40,11 +41,7 @@ class _BuildPageState extends ConsumerState<BuildPage> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            colors: [
-              Color(0xFF0D0E12),
-              Color(0xFF151821),
-              Color(0xFF1A1D29),
-            ],
+            colors: [Color(0xFF0D0E12), Color(0xFF151821), Color(0xFF1A1D29)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             stops: [0.0, 0.5, 1.0],
@@ -65,10 +62,13 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                     PremiumSidebarItem(
                       icon: Icons.play_arrow_rounded,
                       label: 'Playground',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const PlaygroundPage()),
-                      ),
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const PlaygroundPage(),
+                            ),
+                          ),
                     ),
                     PremiumSidebarItem(
                       icon: Icons.construction_rounded,
@@ -79,24 +79,29 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                     PremiumSidebarItem(
                       icon: Icons.school_rounded,
                       label: 'Learn',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LearnPage()),
-                      ),
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LearnPage(),
+                            ),
+                          ),
                     ),
                   ],
                   topPadding: 12,
                 ),
                 Expanded(
                   child: SafeArea(
-                    child: projectsState.isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : projectsState.error != null
+                    child:
+                        projectsState.isLoading
+                            ? const _BuildPageSkeleton()
+                            : projectsState.error != null
                             ? Center(
-                                child: Text(
+                              child: Text(
                                 'Error: ${projectsState.error}',
                                 style: const TextStyle(color: Colors.redAccent),
-                              ))
+                              ),
+                            )
                             : _buildTwoPanelLayout(projectsState.projects),
                   ),
                 ),
@@ -237,11 +242,16 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                       ),
                       const Spacer(),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.06),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.white.withOpacity(0.08)),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.08),
+                          ),
                         ),
                         child: Text(
                           '${projects.length}',
@@ -256,9 +266,10 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                 ),
                 Divider(color: Colors.white.withOpacity(0.06), height: 1),
                 Expanded(
-                  child: projects.isEmpty
-                      ? _buildEmptyState()
-                      : _buildProjectsList(projects),
+                  child:
+                      projects.isEmpty
+                          ? _buildEmptyState()
+                          : _buildProjectsList(projects),
                 ),
               ],
             ),
@@ -275,7 +286,11 @@ class _BuildPageState extends ConsumerState<BuildPage> {
         Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70, size: 20),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Colors.white70,
+                size: 20,
+              ),
               onPressed: () => Navigator.of(context).pop(),
               tooltip: 'Back to Home',
             ),
@@ -310,11 +325,7 @@ class _BuildPageState extends ConsumerState<BuildPage> {
       height: 120,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [
-            Color(0xFF6366F1),
-            Color(0xFF8B5CF6),
-            Color(0xFFA855F7),
-          ],
+          colors: [Color(0xFF6366F1), Color(0xFF8B5CF6), Color(0xFFA855F7)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -393,13 +404,15 @@ class _BuildPageState extends ConsumerState<BuildPage> {
         stackCounts[stack] = (stackCounts[stack] ?? 0) + 1;
       }
     }
-    
-    final topStacks = stackCounts.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    
-    final recentProjects = projects.where((p) => 
-      DateTime.now().difference(p.updatedAt).inDays <= 7
-    ).length;
+
+    final topStacks =
+        stackCounts.entries.toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
+
+    final recentProjects =
+        projects
+            .where((p) => DateTime.now().difference(p.updatedAt).inDays <= 7)
+            .length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -511,7 +524,11 @@ class _BuildPageState extends ConsumerState<BuildPage> {
                   color: const Color(0xFFF59E0B).withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.layers_outlined, color: Color(0xFFF59E0B), size: 18),
+                child: const Icon(
+                  Icons.layers_outlined,
+                  color: Color(0xFFF59E0B),
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 12),
               Text(
@@ -534,46 +551,51 @@ class _BuildPageState extends ConsumerState<BuildPage> {
               ),
             )
           else
-            ...topStacks.map((entry) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF59E0B),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      entry.key,
-                      style: GoogleFonts.poppins(
-                        color: Colors.white.withOpacity(0.8),
-                        fontSize: 14,
+            ...topStacks.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF59E0B),
+                        shape: BoxShape.circle,
                       ),
                     ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.06),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${entry.value}',
-                      style: GoogleFonts.robotoMono(
-                        color: Colors.white70,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        entry.key,
+                        style: GoogleFonts.poppins(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '${entry.value}',
+                        style: GoogleFonts.robotoMono(
+                          color: Colors.white70,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )),
+            ),
         ],
       ),
     );
@@ -633,7 +655,72 @@ class _BuildPageState extends ConsumerState<BuildPage> {
       },
     );
   }
+}
 
+class _BuildPageSkeleton extends StatelessWidget {
+  const _BuildPageSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Row(
+        children: [
+          // Left panel skeleton
+          Expanded(
+            flex: 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                BigShimmer(width: 220, height: 36),
+                SizedBox(height: 16),
+                BigShimmer(width: 300, height: 20),
+                SizedBox(height: 24),
+                BigShimmer(
+                  width: 260,
+                  height: 120,
+                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                ),
+                SizedBox(height: 24),
+                BigShimmer(width: 200, height: 18),
+                SizedBox(height: 12),
+                BigShimmer(width: 380, height: 80),
+              ],
+            ),
+          ),
+          const SizedBox(width: 24),
+          // Right panel skeleton
+          Expanded(
+            flex: 3,
+            child: Container(
+              margin: const EdgeInsets.only(top: 24, right: 24, bottom: 24),
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.02),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(24),
+                  bottomLeft: Radius.circular(24),
+                ),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  BigShimmer(width: 240, height: 24),
+                  SizedBox(height: 16),
+                  BigShimmer(width: double.infinity, height: 64),
+                  SizedBox(height: 12),
+                  BigShimmer(width: double.infinity, height: 64),
+                  SizedBox(height: 12),
+                  BigShimmer(width: double.infinity, height: 64),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ProjectCard extends ConsumerWidget {
@@ -692,23 +779,35 @@ class ProjectCard extends ConsumerWidget {
                       ),
                     ),
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.more_vert, color: Colors.white54, size: 18),
+                      icon: const Icon(
+                        Icons.more_vert,
+                        color: Colors.white54,
+                        size: 18,
+                      ),
                       onSelected: (value) {
                         if (value == 'delete') {
                           _showDeleteConfirmation(context, ref, project.id);
                         }
                       },
                       color: const Color(0xFF1F2937),
-                      itemBuilder: (BuildContext context) => [
-                        const PopupMenuItem<String>(
-                          value: 'delete',
-                          child: ListTile(
-                            leading: Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-                            title: Text('Delete', style: TextStyle(color: Colors.redAccent)),
-                            dense: true,
-                          ),
-                        ),
-                      ],
+                      itemBuilder:
+                          (BuildContext context) => [
+                            const PopupMenuItem<String>(
+                              value: 'delete',
+                              child: ListTile(
+                                leading: Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.redAccent,
+                                  size: 18,
+                                ),
+                                title: Text(
+                                  'Delete',
+                                  style: TextStyle(color: Colors.redAccent),
+                                ),
+                                dense: true,
+                              ),
+                            ),
+                          ],
                     ),
                   ],
                 ),
@@ -728,22 +827,33 @@ class ProjectCard extends ConsumerWidget {
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
-                    children: project.stack.take(3).map((stack) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.white.withOpacity(0.08)),
-                      ),
-                      child: Text(
-                        stack,
-                        style: GoogleFonts.poppins(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    )).toList(),
+                    children:
+                        project.stack
+                            .take(3)
+                            .map(
+                              (stack) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.06),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.08),
+                                  ),
+                                ),
+                                child: Text(
+                                  stack,
+                                  style: GoogleFonts.poppins(
+                                    color: Colors.white.withOpacity(0.8),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -772,20 +882,29 @@ class ProjectCard extends ConsumerWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String projectId) {
+  void _showDeleteConfirmation(
+    BuildContext context,
+    WidgetRef ref,
+    String projectId,
+  ) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Delete Project?'),
-          content: const Text('Are you sure you want to delete this project? This action cannot be undone.'),
+          content: const Text(
+            'Are you sure you want to delete this project? This action cannot be undone.',
+          ),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
               onPressed: () => Navigator.of(context).pop(),
             ),
             TextButton(
-              child: const Text('Delete', style: TextStyle(color: Colors.redAccent)),
+              child: const Text(
+                'Delete',
+                style: TextStyle(color: Colors.redAccent),
+              ),
               onPressed: () {
                 ref.read(projectsProvider.notifier).deleteProject(projectId);
                 Navigator.of(context).pop();

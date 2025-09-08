@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:codemate/themes/colors.dart';
@@ -47,6 +48,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   // Scroll controller for conversation and scroll-to-bottom button
   final ScrollController _conversationScrollController = ScrollController();
   bool _showScrollToBottom = false;
+  // Auto-scroll scheduling flag to avoid spamming animations while streaming
+  bool _autoScrollScheduled = false;
   // Throttle state updates from scroll listener
   int _lastScrollCheckMs = 0;
   // Canvas view mode: 'code' or 'preview'
@@ -117,6 +120,24 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       duration: const Duration(milliseconds: 500),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _scheduleAutoScrollToBottom() {
+    if (_autoScrollScheduled) return;
+    _autoScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoScrollScheduled = false;
+      if (!mounted) return;
+      if (!_conversationScrollController.hasClients) return;
+      final pos = _conversationScrollController.position;
+      final target = pos.maxScrollExtent;
+      // Use a short animation to keep it smooth
+      _conversationScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.linear,
+      );
+    });
   }
 
   Future<void> _showFileSwitcherMenu(
@@ -841,6 +862,18 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playgroundProvider);
+    // Auto-scroll while streaming to keep viewport pinned to bottom.
+    // Note: ref.listen must be used inside build for ConsumerState widgets.
+    ref.listen(playgroundProvider, (previous, next) {
+      if (next.streaming ||
+          (previous?.streaming == true && next.streaming == false)) {
+        _scheduleAutoScrollToBottom();
+      }
+      if ((previous?.messages.length ?? 0) != next.messages.length &&
+          next.streaming) {
+        _scheduleAutoScrollToBottom();
+      }
+    });
     // Reset view mode when the selected canvas file changes
     if (state.selectedCanvasPath != _lastCanvasPath) {
       _lastCanvasPath = state.selectedCanvasPath;
@@ -990,41 +1023,62 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
               ),
           child: Row(
             children: [
-              PremiumSidebar(
-                items: [
-                  PremiumSidebarItem(
-                    icon: Icons.home,
-                    label: 'Home',
-                    onTap: () => Navigator.of(context).pop(),
-                    selected: false,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.play_arrow_rounded,
-                    label: 'Playground',
-                    onTap: () {},
-                    selected: true,
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.construction_rounded,
-                    label: 'Build',
-                    onTap:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const BuildPage()),
-                        ),
-                  ),
-                  PremiumSidebarItem(
-                    icon: Icons.school_rounded,
-                    label: 'Learn',
-                    onTap:
-                        () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LearnPage()),
-                        ),
-                  ),
-                ],
-                topPadding: 16,
-                middle: _PlaygroundHistoryPanel(ref: ref),
+              // Sidebar quick slide-in for immersive entry
+              TweenAnimationBuilder<double>(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                tween: Tween(begin: 0.0, end: 1.0),
+                builder: (context, t, child) {
+                  return Opacity(
+                    opacity: t,
+                    child: Transform.translate(
+                      offset: Offset((1 - t) * -12, 0),
+                      child: child,
+                    ),
+                  );
+                },
+                child: PremiumSidebar(
+                  items: [
+                    PremiumSidebarItem(
+                      icon: Icons.home,
+                      label: 'Home',
+                      onTap: () => Navigator.of(context).pop(),
+                      selected: false,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.play_arrow_rounded,
+                      label: 'Playground',
+                      onTap: () {},
+                      selected: true,
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.construction_rounded,
+                      label: 'Build',
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BuildPage(),
+                            ),
+                          ),
+                    ),
+                    PremiumSidebarItem(
+                      icon: Icons.school_rounded,
+                      label: 'Learn',
+                      onTap:
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LearnPage(),
+                            ),
+                          ),
+                    ),
+                  ],
+                  topPadding: 16,
+                  gapBelowTopIcon: 8, // reduce unusual gap in Playground
+                  expandTopIconHitBox: true, // make whole area clickable
+                  middle: _PlaygroundHistoryPanel(ref: ref),
+                ),
               ),
               // Only the main content area is pushed below the AppBar; the sidebar touches the very top
               Expanded(
@@ -1042,6 +1096,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                               flex: 2,
                               child: Stack(
                                 children: [
+                                  // Ambient particles behind the content
+                                  _buildAnimatedParticles(),
                                   _buildGlow(),
                                   AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 280),
@@ -1076,6 +1132,8 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                 width: leftW,
                                 child: Stack(
                                   children: [
+                                    // Ambient particles behind the content
+                                    _buildAnimatedParticles(),
                                     _buildGlow(),
                                     AnimatedSwitcher(
                                       duration: const Duration(
@@ -2064,10 +2122,11 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                         height: 2.2,
                                       ),
                                     ),
-                                  if (!isUser) ...[
+                                  if (!isUser && !isStreamingLastAI) ...[
                                     const SizedBox(height: 8),
                                     Row(
                                       children: [
+                                        // Copy appears only after stream completes
                                         IconButton(
                                           tooltip: 'Copy',
                                           onPressed:
@@ -2082,56 +2141,52 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
                                           ),
                                         ),
                                         const SizedBox(width: 8),
-                                        if (!isStreamingLastAI) ...[
-                                          IconButton(
-                                            tooltip: 'Like',
-                                            onPressed:
-                                                () => ref
-                                                    .read(playgroundProvider)
-                                                    .saveMessageFeedback(
-                                                      messageId: m.id,
-                                                      kind:
-                                                          m.feedback == 'like'
-                                                              ? null
-                                                              : 'like',
-                                                    ),
-                                            icon: Icon(
-                                              m.feedback == 'like'
-                                                  ? Icons.thumb_up_alt
-                                                  : Icons.thumb_up_alt_outlined,
-                                              color:
-                                                  m.feedback == 'like'
-                                                      ? AppColors.accent
-                                                      : Colors.white70,
-                                              size: 18,
-                                            ),
+                                        IconButton(
+                                          tooltip: 'Like',
+                                          onPressed:
+                                              () => ref
+                                                  .read(playgroundProvider)
+                                                  .saveMessageFeedback(
+                                                    messageId: m.id,
+                                                    kind:
+                                                        m.feedback == 'like'
+                                                            ? null
+                                                            : 'like',
+                                                  ),
+                                          icon: Icon(
+                                            m.feedback == 'like'
+                                                ? Icons.thumb_up_alt
+                                                : Icons.thumb_up_alt_outlined,
+                                            color:
+                                                m.feedback == 'like'
+                                                    ? AppColors.accent
+                                                    : Colors.white70,
+                                            size: 18,
                                           ),
-                                          IconButton(
-                                            tooltip: 'Dislike',
-                                            onPressed:
-                                                () => ref
-                                                    .read(playgroundProvider)
-                                                    .saveMessageFeedback(
-                                                      messageId: m.id,
-                                                      kind:
-                                                          m.feedback ==
-                                                                  'dislike'
-                                                              ? null
-                                                              : 'dislike',
-                                                    ),
-                                            icon: Icon(
-                                              m.feedback == 'dislike'
-                                                  ? Icons.thumb_down_alt
-                                                  : Icons
-                                                      .thumb_down_alt_outlined,
-                                              color:
-                                                  m.feedback == 'dislike'
-                                                      ? AppColors.accent
-                                                      : Colors.white70,
-                                              size: 18,
-                                            ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Dislike',
+                                          onPressed:
+                                              () => ref
+                                                  .read(playgroundProvider)
+                                                  .saveMessageFeedback(
+                                                    messageId: m.id,
+                                                    kind:
+                                                        m.feedback == 'dislike'
+                                                            ? null
+                                                            : 'dislike',
+                                                  ),
+                                          icon: Icon(
+                                            m.feedback == 'dislike'
+                                                ? Icons.thumb_down_alt
+                                                : Icons.thumb_down_alt_outlined,
+                                            color:
+                                                m.feedback == 'dislike'
+                                                    ? AppColors.accent
+                                                    : Colors.white70,
+                                            size: 18,
                                           ),
-                                        ],
+                                        ),
                                       ],
                                     ),
                                   ],
@@ -2214,6 +2269,51 @@ class _PlaygroundPageState extends ConsumerState<PlaygroundPage> {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: RadialGradient(colors: [color, Colors.transparent]),
+      ),
+    );
+  }
+
+  // Subtle ambient particles similar to Home; purely visual
+  Widget _buildAnimatedParticles() {
+    return IgnorePointer(
+      child: Stack(
+        children: List.generate(12, (index) {
+          final rnd = Random(index);
+          final size = 2.0 + rnd.nextDouble() * 4;
+          final opacity = 0.08 + rnd.nextDouble() * 0.25;
+          final int ms = 2600 + rnd.nextInt(3200);
+          final screen = MediaQuery.of(context).size;
+          final left = rnd.nextDouble() * screen.width;
+          final top = rnd.nextDouble() * screen.height;
+          return Positioned(
+            left: left,
+            top: top,
+            child: AnimatedOpacity(
+              duration: Duration(milliseconds: ms),
+              opacity: opacity,
+              child: Container(
+                width: size,
+                height: size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      AppColors.accent.withOpacity(opacity),
+                      Colors.transparent,
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.accent.withOpacity(opacity * 0.4),
+                      blurRadius: size * 2,
+                      spreadRadius: size * 0.5,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
       ),
     );
   }
@@ -3364,15 +3464,30 @@ class _InputBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.15),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF7F5AF0).withOpacity(0.08),
+                blurRadius: 30,
+                spreadRadius: 5,
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -3520,39 +3635,69 @@ class _InputBar extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      IconButton(
-                        onPressed: (sending || uploading) ? null : onPickFiles,
-                        icon: const Icon(
-                          Icons.add_circle_outline,
-                          color: Colors.white70,
+                      // Enhanced attach button
+                      Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white.withOpacity(0.08),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.1),
+                            width: 1,
+                          ),
+                        ),
+                        child: IconButton(
+                          onPressed:
+                              (sending || uploading) ? null : onPickFiles,
+                          icon: const Icon(
+                            Icons.attach_file_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
+                          tooltip: 'Attach files',
                         ),
                       ),
                     ],
                   ),
-                  ElevatedButton(
-                    onPressed: (sending || uploading) ? null : onSend,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.accent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                  // Enhanced send button with gradient + wave loader
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      padding: const EdgeInsets.all(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF6366F1).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                     ),
-                    child:
-                        (sending || uploading)
-                            ? Row(
-                              children: const [
-                                SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: MiniWave(size: 22),
-                                ),
-                              ],
-                            )
-                            : const Icon(
-                              Icons.arrow_upward,
-                              color: Colors.white,
-                            ),
+                    child: ElevatedButton(
+                      onPressed: (sending || uploading) ? null : onSend,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.all(14),
+                      ),
+                      child:
+                          (sending || uploading)
+                              ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: MiniWave(size: 22, color: Colors.white),
+                              )
+                              : const Icon(
+                                Icons.rocket_launch,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                    ),
                   ),
                 ],
               ),

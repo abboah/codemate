@@ -40,6 +40,7 @@ class AgentChatView extends ConsumerStatefulWidget {
 class _AgentChatViewState extends ConsumerState<AgentChatView> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _inputFocusNode = FocusNode();
+  final ScrollController _chatScrollController = ScrollController();
   String? _activeChatId;
   String _selectedModel = 'gemini-2.5-flash';
   bool _askMode = false; // false = Agent, true = Ask
@@ -47,6 +48,8 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
   List<AgentChatMessage> _localMessages = [];
   bool _isSendingNewChat = false;
   bool _isUploading = false; // show uploading indicator during send
+  bool _autoScrollScheduled = false; // throttle auto-scroll scheduling
+  bool _wasStreaming = false; // track stream-on -> stream-off transition
 
   // Composer image hover preview via global overlay
   OverlayEntry? _imageHoverOverlay;
@@ -141,6 +144,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
     _controller.removeListener(_handleTextChangedForMentions);
     _controller.dispose();
     _inputFocusNode.dispose();
+    _chatScrollController.dispose();
     super.dispose();
   }
 
@@ -1086,10 +1090,16 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isSending =
-        _isSendingNewChat ||
-        (_activeChatId != null &&
-            ref.watch(agentChatProvider(_activeChatId!)).isSending);
+    final bool providerIsSending =
+        _activeChatId != null &&
+        ref.watch(agentChatProvider(_activeChatId!)).isSending;
+    final bool isSending = _isSendingNewChat || providerIsSending;
+
+    // Auto-scroll while streaming, and once after it ends to settle
+    if (isSending || _wasStreaming) {
+      _scheduleAutoScrollToBottom(reverse: true);
+    }
+    _wasStreaming = isSending;
     final chatHistory = ref.watch(projectChatsProvider(widget.projectId));
     final projectFilesState = ref.watch(projectFilesProvider(widget.projectId));
 
@@ -1131,18 +1141,25 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
                         return const Center(child: WaveLoader(size: 28));
                       }
                       return ListView.builder(
+                        controller: _chatScrollController,
                         padding: const EdgeInsets.all(16.0),
                         reverse: true,
                         itemCount: chatState.messages.length,
                         itemBuilder: (context, index) {
                           final messages = chatState.messages.reversed.toList();
                           final message = messages[index];
+                          final isLast = index == 0;
+                          final streamingThis =
+                              providerIsSending &&
+                              isLast &&
+                              message.sender == MessageSender.ai;
                           return Padding(
                             key: ValueKey(message.id),
                             padding: const EdgeInsets.symmetric(vertical: 4.0),
                             child: AgentMessageBubble(
                               message: message,
-                              isLastMessage: index == 0,
+                              isLastMessage: isLast,
+                              isStreaming: streamingThis,
                               projectId: widget.projectId,
                             ),
                           );
@@ -1261,6 +1278,7 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
       return _buildInitialView();
     }
     return ListView.builder(
+      controller: _chatScrollController,
       padding: const EdgeInsets.all(16.0),
       reverse: true,
       addAutomaticKeepAlives: false,
@@ -1277,12 +1295,33 @@ class _AgentChatViewState extends ConsumerState<AgentChatView> {
             child: AgentMessageBubble(
               message: message,
               isLastMessage: index == 0,
+              isStreaming:
+                  _isSendingNewChat &&
+                  index == 0 &&
+                  message.sender == MessageSender.ai,
               projectId: widget.projectId,
             ),
           ),
         );
       },
     );
+  }
+
+  void _scheduleAutoScrollToBottom({bool reverse = false}) {
+    if (_autoScrollScheduled) return;
+    _autoScrollScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _autoScrollScheduled = false;
+      if (!mounted) return;
+      if (!_chatScrollController.hasClients) return;
+      final pos = _chatScrollController.position;
+      final target = reverse ? pos.minScrollExtent : pos.maxScrollExtent;
+      _chatScrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.linear,
+      );
+    });
   }
 
   Widget _buildInitialView() {
@@ -1806,12 +1845,14 @@ class AgentMessageBubble extends ConsumerWidget {
   final AgentChatMessage message;
   final bool isLastMessage;
   final String projectId;
+  final bool isStreaming;
 
   const AgentMessageBubble({
     super.key,
     required this.message,
     required this.projectId,
     this.isLastMessage = false,
+    this.isStreaming = false,
   });
 
   @override
@@ -2300,7 +2341,7 @@ class AgentMessageBubble extends ConsumerWidget {
               ],
             ),
           ),
-          if (!isUser && isLastMessage)
+          if (!isUser && isLastMessage && !isStreaming)
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 8),
               child: Row(
