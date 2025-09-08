@@ -1,41 +1,60 @@
-import 'dart:async';
 import 'dart:ui';
 
-import 'package:codemate/auth/login_page.dart';
+import 'package:codemate/landing_page/widgets/demo_video.dart';
 import 'package:codemate/landing_page/widgets/features_section.dart';
 import 'package:codemate/landing_page/widgets/footer.dart';
 import 'package:codemate/landing_page/widgets/hero_section.dart';
 import 'package:codemate/landing_page/widgets/navbar.dart';
-import 'package:codemate/landing_page/widgets/pricing.dart';
 import 'package:codemate/landing_page/widgets/testimonials.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-class LandingPage extends StatelessWidget {
+class LandingPage extends StatefulWidget {
   const LandingPage({super.key});
+
+  @override
+  State<LandingPage> createState() => _LandingPageState();
+}
+
+class _LandingPageState extends State<LandingPage> {
+    final ScrollController _scrollController = ScrollController();
+    final GlobalKey _demoKey = GlobalKey();
+
 
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme;
+    // Before accessing scroll controller
     return Scaffold(
       body: CustomScrollView(
+        controller: 
+        _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
-          const SliverPersistentHeader(
+          SliverPersistentHeader(
             pinned: true,
             delegate: NavBarDelegate(),
           ),
-          SliverToBoxAdapter(child: EnhancedHeroSection()),
           SliverToBoxAdapter(
-            child: FeatureSection(
-              title: "AI-Powered Code Completion",
-              description:
-                  "Our intelligent editor predicts your next move with uncanny accuracy, reducing keystrokes by 40% on average.",
-              imagePath: "images/code_editor.png",
-              isReversed: true,
-            ),
+            key: const ValueKey('hero'),
+            child: EnhancedHeroSection(onPressed: (){
+              // Scroll to demo video section
+              final demoContext = _demoKey.currentContext;
+              if (demoContext != null) {
+                Scrollable.ensureVisible(
+                  demoContext,
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeInOut,
+                  alignment: 0.1, // Position demo video near top of viewport
+                );
+              }
+            },),
           ),
           SliverToBoxAdapter(
+            key: _demoKey,
+            child: const DemoVideoWidget(),
+          ),
+    SliverToBoxAdapter(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(color: Colors.black),
@@ -43,11 +62,12 @@ class LandingPage extends StatelessWidget {
             ),
           ),
           SliverToBoxAdapter(
+            key: const ValueKey('playground'),
             child: FeatureSection(
-              title: "Real-Time Collaboration",
+              title: "Experiment Freely in the Playground",
               description:
-                  "Work simultaneously with teammates anywhere in the world with our low-latency collaborative editing.",
-              imagePath: "images/code_editor.png",
+                  "Test ideas instantly in an interactive coding space. Prototype, tweak, and run code with AI-powered feedback — all without leaving your browser.",
+              imagePath: "images/playground_canvas.png",
               isReversed: false,
             ),
           ),
@@ -59,17 +79,41 @@ class LandingPage extends StatelessWidget {
             ),
           ),
           SliverToBoxAdapter(
+            key: const ValueKey('build'),
             child: FeatureSection(
-              title: "Integrated Debugging",
+              title: "Build Smarter with AI",
               description:
-                  "Identify and fix issues faster with our visual debugging tools and AI-assisted error detection.",
-              imagePath: "images/code_editor.png",
+                  "Turn ideas into real projects with Robin, your AI coding copilot. From brainstorming features to generating production-ready code, Build helps you move from concept to completion faster.",
+              imagePath: "images/build_ide.png",
               isReversed: true,
             ),
           ),
-          SliverToBoxAdapter(child: TestimonialsSection()),
+          SliverToBoxAdapter(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(color: Colors.black),
+              child: Divider(color: color.onSurface, indent: 0, endIndent: 0),
+            ),
+          ),
+          SliverToBoxAdapter(
+            key: const ValueKey('learn'),
+            child: FeatureSection(
+              title: "Learn by Doing",
+              description:
+                  "Master coding concepts through guided lessons and hands-on challenges. Get personalized feedback, explore new topics, and grow your skills at your own pace.",
+              imagePath: "images/learn_landing.png",
+              isReversed: false,
+            ),
+          ),
+          SliverToBoxAdapter(
+            key: const ValueKey('testimonials'),
+            child: TestimonialsSection(),
+          ),
           //  SliverToBoxAdapter(child: PricingSection()),
-          SliverToBoxAdapter(child: Footer()),
+          SliverToBoxAdapter(
+            key: const ValueKey('footer'),
+            child: Footer(),
+          ),
         ],
       ),
     );
@@ -177,9 +221,6 @@ class IntersectionObserver {
     final renderObject = context.findRenderObject() as RenderBox?;
     if (renderObject == null) return;
 
-    final widget = context.widget as StatefulWidget;
-    final state = (widget as dynamic).createState();
-
     void checkIntersection() {
       final bounds =
           renderObject.localToGlobal(Offset.zero) & renderObject.size;
@@ -198,7 +239,8 @@ class IntersectionObserver {
       }
     }
 
-    state._checkIntersection = checkIntersection;
+    // Note: This is a simplified implementation
+    // In a real implementation, you'd want proper state management
     WidgetsBinding.instance.addPostFrameCallback((_) => checkIntersection());
     WidgetsBinding.instance.addPersistentFrameCallback(
       (_) => checkIntersection(),

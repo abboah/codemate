@@ -4,7 +4,8 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 class EnhancedHeroSection extends StatefulWidget {
-  const EnhancedHeroSection({super.key});
+  final VoidCallback onPressed;
+  const EnhancedHeroSection({super.key, required this.onPressed});
 
   @override
   State<EnhancedHeroSection> createState() => _EnhancedHeroSectionState();
@@ -23,6 +24,7 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
   late Animation<double> _rotateAnimation;
   late Animation<double> _floatingAnimation;
   late Animation<double> _pulseAnimation;
+
 
   final List<Particle> _particles = [];
   final int _particleCount = 50;
@@ -114,6 +116,8 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
     _pulseController.dispose();
     super.dispose();
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +218,7 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
                                     SizedBox(height: isMobile ? 32 : 48),
 
                                     // CTA buttons with premium effects
-                                    _buildCTAButtons(isMobile),
+                                    _buildCTAButtons(isMobile, widget.onPressed),
 
                                     SizedBox(height: isMobile ? 16 : 24),
 
@@ -433,7 +437,7 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
     );
   }
 
-  Widget _buildCTAButtons(bool isMobile) {
+  Widget _buildCTAButtons(bool isMobile, VoidCallback onPressed) {
     return SizedBox(
       width: double.infinity,
       child: Column(
@@ -473,9 +477,7 @@ class _EnhancedHeroSectionState extends State<EnhancedHeroSection>
                   SizedBox(
                     width: double.infinity,
                     child: PremiumButton(
-                      onPressed: () {
-                        // Show demo
-                      },
+                      onPressed: onPressed,
                       text: 'Watch Demo',
                       isPrimary: false,
                       width: double.infinity,

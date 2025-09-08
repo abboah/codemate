@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:codemate/landing_page/landing_page.dart';
+import 'package:codemate/landing_page/widgets/features_section.dart';
 import 'package:flutter/material.dart';
 
 class PricingSection extends StatelessWidget {

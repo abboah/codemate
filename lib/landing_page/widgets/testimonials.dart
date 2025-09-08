@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class TestimonialsSection extends StatefulWidget {
   const TestimonialsSection({Key? key}) : super(key: key);
@@ -54,28 +55,33 @@ class _TestimonialsSectionState extends State<TestimonialsSection> {
       'role': 'Senior Developer at Google',
       'quote':
           'Robin has transformed how our team collaborates. The AI suggestions are uncannily accurate.',
-      'avatar': 'images/avatar.png',
+      'avatar': 'images/avatar2.png',
     },
     {
       'name': 'Michael Chen',
       'role': 'CTO at TechStart',
       'quote':
           'We saw a 30% increase in developer productivity after switching to Robin.',
-      'avatar': 'images/avatar.png',
+      'avatar': 'images/avatar1.png',
     },
     {
       'name': 'Emma Rodriguez',
       'role': 'Lead Engineer at Meta',
       'quote':
           'The debugging tools alone are worth the price. A game-changer for complex systems.',
-      'avatar': 'images/avatar.png',
+      'avatar': 'images/avatar3.png',
     },
   ];
+final supabase = Supabase.instance.client;
 
+  String getSupabaseImageUrl(String path) {
+  return supabase.storage.from('assets').getPublicUrl(path);
+  }
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 768;
+
 
     return Container(
       // color: const Color(0xFF111118),
@@ -138,6 +144,7 @@ class _TestimonialsSectionState extends State<TestimonialsSection> {
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
+                               final t = testimonials[index];
                               return Padding(
                                 padding: const EdgeInsets.all(24),
                                 child: Column(
@@ -146,8 +153,8 @@ class _TestimonialsSectionState extends State<TestimonialsSection> {
                                   children: [
                                     CircleAvatar(
                                       radius: 40,
-                                      backgroundImage: AssetImage(
-                                        testimonial['avatar']!,
+                                      backgroundImage: NetworkImage(
+                                         getSupabaseImageUrl(t['avatar']!), // e.g. "images/avatar.png"
                                       ),
                                     ),
                                     const SizedBox(height: 24),
