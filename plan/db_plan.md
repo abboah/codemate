@@ -9,14 +9,26 @@ This document outlines the redesigned database structure for **Robin**, now leve
 - [x]  🧑‍💻 Users Table
 
 ```sql
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username TEXT NOT NULL,
-  email TEXT UNIQUE NOT NULL,
-  avatar_url TEXT NULL,  
-  created_at TIMESTAMP DEFAULT NOW(),
-  has_completed_onboarding BOOLEAN DEFAULT FALSE
+-- Create the users table to store public user data
+CREATE TABLE public.users (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT,
+  username TEXT,
+  email TEXT UNIQUE,
+  avatar_url TEXT,
+  bio TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Create the user_settings table
+CREATE TABLE public.user_settings (
+  user_id UUID PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  theme TEXT NOT NULL DEFAULT 'dark' CHECK (theme IN ('light', 'dark')),
+  notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  has_completed_onboarding BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 
 ```
 
