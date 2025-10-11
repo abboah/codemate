@@ -1,9 +1,8 @@
 {
   "builds": [
     {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": { "distDir": "build/web" }
+      "src": "pubspec.yaml",
+      "use": "@vercel/flutter"
     }
   ],
   "routes": [
