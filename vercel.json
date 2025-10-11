@@ -1,21 +1,16 @@
 {
-  "builds": [
-    {
-      "src": "pubspec.yaml",
-      "use": "@vercel/flutter"
-    }
-  ],
+  "buildCommand": "flutter build web",
+  "outputDirectory": "build/web",
   "routes": [
-    { "handle": "filesystem" },
     {
       "src": "/(.*)",
       "dest": "/index.html",
-      "headers": [
-        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
-        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
-        { "key": "Cross-Origin-Resource-Policy", "value": "cross-origin" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" }
-      ]
+      "headers": {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "credentialless",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        "X-Content-Type-Options": "nosniff"
+      }
     }
   ]
 }
