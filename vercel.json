@@ -1,9 +1,33 @@
 {
-  "buildCommand": "flutter build web",
-  "outputDirectory": "build/web",
-  "headers": [
+  "builds": [
     {
-      "source": "/(.*)",
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "build/web" }
+    }
+  ],
+  "routes": [
+    { "handle": "filesystem" },
+    {
+      "src": "/AssetManifest\\.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json" },
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "cross-origin" }
+      ]
+    },
+    {
+      "src": "/assets/(.*)",
+      "headers": [
+        { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
+        { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
+        { "key": "Cross-Origin-Resource-Policy", "value": "cross-origin" }
+      ]
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html",
       "headers": [
         { "key": "Cross-Origin-Opener-Policy", "value": "same-origin" },
         { "key": "Cross-Origin-Embedder-Policy", "value": "credentialless" },
