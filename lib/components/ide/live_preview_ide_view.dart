@@ -8,6 +8,7 @@ import 'package:codemate/providers/project_files_provider.dart';
 import 'package:codemate/models/project_file.dart';
 import 'package:codemate/themes/colors.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LivePreviewIdeView extends ConsumerStatefulWidget {
   final String projectId;
@@ -24,6 +25,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
   bool _installing = false;
   bool _running = false;
   bool _expanded = false;
+  int? _port;
   final List<String> _logs = [];
   WebViewController? _webViewController;
 
@@ -136,7 +138,10 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
       _svc.onServerReady((port, url) {
         _appendLog('Dev server ready on port $port: $url');
         if (!mounted) return;
-        setState(() => _previewUrl = url);
+        setState(() {
+          _previewUrl = url;
+          _port = port;
+        });
         // Initialize or update WebView
         if (_webViewController == null) {
           final c =
@@ -187,6 +192,23 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
   }
 
   // No-op: using WebViewWidget instead of custom iframe registration.
+  String _statusText() {
+    if (_previewUrl != null)
+      return 'Ready' + (_port != null ? '  ·  port $_port' : '');
+    if (_running) return 'Starting dev server…';
+    if (_installing) return 'Installing dependencies…';
+    if (_booting) return 'Booting WebContainer…';
+    return 'Click Run to start preview';
+  }
+
+  Future<void> _openInNewTab() async {
+    final url = _previewUrl;
+    if (url == null) return;
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      await launchUrl(uri, webOnlyWindowName: '_blank');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -196,40 +218,112 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
     final double boxHeight =
         _expanded ? (screen.height - 96).clamp(320.0, screen.height) : 640;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         width: boxWidth,
         height: boxHeight,
         decoration: BoxDecoration(
-          color: const Color(0xFF0F0F0F),
-          borderRadius: BorderRadius.circular(12),
+          gradient: const LinearGradient(
+            colors: [Color(0xFF0F1016), Color(0xFF0C0D12)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withOpacity(0.08)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.35),
+              blurRadius: 28,
+              offset: const Offset(0, 16),
+            ),
+          ],
         ),
         child: Column(
           children: [
             Container(
-              height: 44,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.04),
+                color: Colors.white.withOpacity(0.03),
                 border: Border(
                   bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
                 ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.play_circle_fill, color: AppColors.accent),
-                  const SizedBox(width: 8),
-                  Text(
-                    'LIVE PREVIEW',
-                    style: GoogleFonts.poppins(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      letterSpacing: 0.6,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF7F5AF0), Color(0xFF9D4EDD)],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF7F5AF0).withOpacity(0.3),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 18,
                     ),
                   ),
-                  const Spacer(),
-                  // Expand/Collapse button
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Live Preview',
+                          style: GoogleFonts.poppins(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                            letterSpacing: 0.2,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          _statusText(),
+                          style: GoogleFonts.poppins(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_previewUrl != null)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 6.0),
+                      child: Tooltip(
+                        message: 'Open in new tab',
+                        child: IconButton(
+                          onPressed: _openInNewTab,
+                          icon: const Icon(
+                            Icons.open_in_new,
+                            size: 18,
+                            color: Colors.white70,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.05),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              side: BorderSide(
+                                color: Colors.white.withOpacity(0.08),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   Tooltip(
                     message: _expanded ? 'Exit Fullscreen' : 'Fullscreen',
                     child: IconButton(
@@ -251,13 +345,10 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  // Close button
                   Tooltip(
                     message: 'Close',
                     child: IconButton(
-                      onPressed: () {
-                        Navigator.of(context).maybePop();
-                      },
+                      onPressed: () => Navigator.of(context).maybePop(),
                       icon: const Icon(
                         Icons.close,
                         color: Colors.white70,
@@ -275,13 +366,24 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  TextButton.icon(
+                  FilledButton.icon(
                     onPressed:
                         (_booting || _installing || _running) ? null : _start,
-                    icon: const Icon(Icons.play_arrow),
-                    label: const Text('Run'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white70,
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: Text(
+                      'Run',
+                      style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ],
@@ -291,7 +393,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
               child: Row(
                 children: [
                   Expanded(
-                    flex: 5,
+                    flex: 6,
                     child: Container(
                       decoration: BoxDecoration(
                         border: Border(
@@ -302,16 +404,7 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                       ),
                       child:
                           _previewUrl == null
-                              ? Center(
-                                child: Text(
-                                  _installing
-                                      ? 'Installing dependencies…'
-                                      : _booting
-                                      ? 'Booting WebContainer…'
-                                      : 'Click Run to start preview',
-                                  style: const TextStyle(color: Colors.white70),
-                                ),
-                              )
+                              ? _EmptyState(status: _statusText())
                               : (_webViewController == null
                                   ? const Center(
                                     child: CircularProgressIndicator(),
@@ -323,23 +416,131 @@ class _LivePreviewIdeViewState extends ConsumerState<LivePreviewIdeView> {
                   ),
                   Expanded(
                     flex: 4,
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      child: ListView.builder(
-                        itemCount: _logs.length,
-                        itemBuilder:
-                            (_, i) => Text(
-                              _logs[i],
-                              style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 12,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Container(
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.03),
+                            border: Border(
+                              bottom: BorderSide(
+                                color: Colors.white.withOpacity(0.08),
                               ),
                             ),
-                      ),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'LOGS',
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  letterSpacing: 0.8,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const Spacer(),
+                              TextButton.icon(
+                                onPressed: () => setState(() => _logs.clear()),
+                                icon: const Icon(
+                                  Icons.cleaning_services_outlined,
+                                  size: 16,
+                                ),
+                                label: const Text('Clear'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.white60,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+                            child: ListView.builder(
+                              itemCount: _logs.length,
+                              itemBuilder:
+                                  (_, i) => Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2.0,
+                                    ),
+                                    child: Text(
+                                      _logs[i],
+                                      style: const TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: 12,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final String status;
+  const _EmptyState({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withOpacity(0.06)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF23A6D5), Color(0xFF12D8FA)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF23A6D5).withOpacity(0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.web_asset, color: Colors.white, size: 20),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              status,
+              style: GoogleFonts.poppins(color: Colors.white70, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'We\'ll boot a WebContainer and run your dev server here.',
+              style: GoogleFonts.poppins(color: Colors.white54, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
           ],
         ),

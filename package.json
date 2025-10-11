@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "serve:web": "node devserver.js 8080 build/web"
+    "serve:web": "node devserver.js 8080 build/web",
+    "build": "flutter build web --release"
   },
   "dependencies": {
     "supabase": "^2.33.9"
